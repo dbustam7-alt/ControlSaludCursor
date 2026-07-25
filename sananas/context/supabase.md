@@ -56,6 +56,7 @@ CREATE TABLE public.appointments (
   date_time TIMESTAMPTZ NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed')),
   notes TEXT,
+  attachment_url TEXT, -- URL o path del documento médico escaneado asociado
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -89,6 +90,7 @@ CREATE TABLE public.medications (
   low_stock_alert INTEGER,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'completed')),
   notes TEXT,
+  attachment_url TEXT, -- URL o path de la receta médica escaneada asociada
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -281,4 +283,61 @@ CREATE POLICY "Members can update medications"
 CREATE POLICY "Members can delete medications"
   ON public.medications FOR DELETE
   USING (public.is_workspace_member(workspace_id));
+
+
+-- ==========================================
+-- 5. ALMACENAMIENTO DE DOCUMENTOS (storage.objects)
+-- ==========================================
+
+-- 5.1 Crear el bucket para guardar recetas, órdenes y documentos médicos
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'medical-documents', 
+  'medical-documents', 
+  false, -- bucket privado para resguardar la privacidad de salud
+  10485760, -- límite de 10MB (10 * 1024 * 1024)
+  ARRAY['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
+)
+ON CONFLICT (id) DO UPDATE SET
+  file_size_limit = EXCLUDED.file_size_limit,
+  allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+-- 5.2 Políticas de seguridad RLS específicas para almacenamiento
+DROP POLICY IF EXISTS "Allow members to read files" ON storage.objects;
+DROP POLICY IF EXISTS "Allow members to insert files" ON storage.objects;
+DROP POLICY IF EXISTS "Allow members to update files" ON storage.objects;
+DROP POLICY IF EXISTS "Allow members to delete files" ON storage.objects;
+
+-- Política de Lectura (SELECT)
+CREATE POLICY "Allow members to read files" ON storage.objects
+  FOR SELECT TO authenticated
+  USING (
+    bucket_id = 'medical-documents' AND
+    public.is_workspace_member(CAST(SPLIT_PART(name, '/', 1) AS UUID))
+  );
+
+-- Política de Inserción (INSERT)
+CREATE POLICY "Allow members to insert files" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    bucket_id = 'medical-documents' AND
+    public.is_workspace_member(CAST(SPLIT_PART(name, '/', 1) AS UUID))
+  );
+
+-- Política de Actualización (UPDATE)
+CREATE POLICY "Allow members to update files" ON storage.objects
+  FOR UPDATE TO authenticated
+  USING (
+    bucket_id = 'medical-documents' AND
+    public.is_workspace_member(CAST(SPLIT_PART(name, '/', 1) AS UUID))
+  );
+
+-- Política de Eliminación (DELETE)
+CREATE POLICY "Allow members to delete files" ON storage.objects
+  FOR DELETE TO authenticated
+  USING (
+    bucket_id = 'medical-documents' AND
+    public.is_workspace_member(CAST(SPLIT_PART(name, '/', 1) AS UUID))
+  );
+
 ```

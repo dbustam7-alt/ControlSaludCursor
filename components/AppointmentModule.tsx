@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspaces } from '@/contexts/WorkspaceContext';
 import { createClient } from '@/utils/supabase/client';
-import { Calendar, Clock, MapPin, Search, Plus, Trash2, CheckCircle, Clock3, AlertCircle, X, MessageSquare } from 'lucide-react';
+import { Calendar, Clock, MapPin, Search, Plus, Trash2, CheckCircle, Clock3, AlertCircle, X, MessageSquare, FileText } from 'lucide-react';
 import { ConfirmModal } from './ConfirmModal';
 
 export interface Appointment {
@@ -16,6 +16,7 @@ export interface Appointment {
   dateTime: string;
   status: 'pending' | 'completed';
   notes: string | null;
+  attachmentUrl: string | null;
 }
 
 const DEFAULT_MOCK_APPOINTMENTS: Appointment[] = [
@@ -28,6 +29,7 @@ const DEFAULT_MOCK_APPOINTMENTS: Appointment[] = [
     dateTime: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString(), // 3 days in the future
     status: 'pending',
     notes: 'Llevar los últimos exámenes de sangre y el electrocardiograma anterior.',
+    attachmentUrl: null,
   },
   {
     id: 'appt-2',
@@ -38,6 +40,7 @@ const DEFAULT_MOCK_APPOINTMENTS: Appointment[] = [
     dateTime: new Date(Date.now() - 1000 * 60 * 60 * 24 * 4).toISOString(), // 4 days in past
     status: 'completed',
     notes: 'Control de rutina mensual. Recetó aumento de dosis de Enalapril.',
+    attachmentUrl: null,
   },
   {
     id: 'appt-3',
@@ -48,6 +51,7 @@ const DEFAULT_MOCK_APPOINTMENTS: Appointment[] = [
     dateTime: new Date(Date.now() + 1000 * 60 * 60 * 24 * 10).toISOString(), // 10 days in future
     status: 'pending',
     notes: 'Revisión de lunares en la espalda.',
+    attachmentUrl: null,
   }
 ];
 
@@ -71,6 +75,7 @@ export const AppointmentModule: React.FC = () => {
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [notes, setNotes] = useState('');
+  const [attachmentUrl, setAttachmentUrl] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
 
   // Deletion Confirmation State
@@ -117,6 +122,7 @@ export const AppointmentModule: React.FC = () => {
           dateTime: appt.date_time,
           status: appt.status,
           notes: appt.notes,
+          attachmentUrl: appt.attachment_url,
         }));
 
         setAppointments(mapped);
@@ -166,6 +172,7 @@ export const AppointmentModule: React.FC = () => {
         dateTime: dateTimeStr,
         status: 'pending',
         notes: notes.trim() || null,
+        attachmentUrl: attachmentUrl.trim() || null,
       };
       
       const updated = [newAppt, ...appointments].sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
@@ -186,6 +193,7 @@ export const AppointmentModule: React.FC = () => {
           date_time: dateTimeStr,
           status: 'pending',
           notes: notes.trim() || null,
+          attachment_url: attachmentUrl.trim() || null,
           created_by: user?.id,
         })
         .select()
@@ -202,6 +210,7 @@ export const AppointmentModule: React.FC = () => {
         dateTime: data.date_time,
         status: data.status,
         notes: data.notes,
+        attachmentUrl: data.attachment_url,
       };
 
       const updated = [newAppt, ...appointments].sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
@@ -262,6 +271,33 @@ export const AppointmentModule: React.FC = () => {
     }
   };
 
+  const handleDownloadAttachment = async (path: string) => {
+    if (path.startsWith('http') || path.startsWith('blob:')) {
+      window.open(path, '_blank');
+      return;
+    }
+
+    if (isDemoMode) {
+      alert('Las visualizaciones de documentos reales no están disponibles en Modo Demo.');
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .storage
+        .from('medical-documents')
+        .createSignedUrl(path, 300);
+
+      if (error) throw error;
+      if (data?.signedUrl) {
+        window.open(data.signedUrl, '_blank');
+      }
+    } catch (err) {
+      console.error('Error generating signed URL:', err);
+      alert('No se pudo acceder al documento. Asegúrate de tener permisos suficientes.');
+    }
+  };
+
   const resetForm = () => {
     setDoctorName('');
     setSpecialty('');
@@ -269,6 +305,7 @@ export const AppointmentModule: React.FC = () => {
     setDate('');
     setTime('');
     setNotes('');
+    setAttachmentUrl('');
     setFormError(null);
   };
 
@@ -432,6 +469,19 @@ export const AppointmentModule: React.FC = () => {
                         <span className="truncate">{appt.location}</span>
                       </div>
                     )}
+
+                    {appt.attachmentUrl && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <FileText className="h-4 w-4 text-indigo-500 shrink-0" />
+                        <button
+                          onClick={() => handleDownloadAttachment(appt.attachmentUrl!)}
+                          className="text-indigo-600 hover:text-indigo-800 hover:underline font-bold text-xs"
+                        >
+                          Ver documento clínico adjunto
+                        </button>
+                      </div>
+                    )}
+
                     {appt.notes && (
                       <div className="mt-3 p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-start gap-2">
                         <MessageSquare className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
@@ -545,6 +595,17 @@ export const AppointmentModule: React.FC = () => {
                   placeholder="Ej. Clínica Las Condes, Box 402"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">URL o Ruta del Adjunto (Opcional)</label>
+                <input
+                  type="text"
+                  placeholder="Ej. id_workspace/nombre_archivo.pdf"
+                  value={attachmentUrl}
+                  onChange={(e) => setAttachmentUrl(e.target.value)}
                   className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-slate-800"
                 />
               </div>

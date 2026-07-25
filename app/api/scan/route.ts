@@ -24,8 +24,6 @@ interface ExtractedData {
     frequency: string;
     startDate: string;
     endDate: string | null;
-    stockQuantity: number;
-    lowStockAlert: number;
     notes: string;
   };
 }
@@ -52,21 +50,23 @@ export async function POST(request: Request) {
       
       let simulated: ExtractedData;
 
-      if (lowerName.includes('receta') || lowerName.includes('medicamento') || lowerName.includes('pildora') || lowerName.includes('farmacia')) {
+      if (lowerName.includes('formula') || lowerName.includes('receta') || lowerName.includes('medicamento') || lowerName.includes('pildora') || lowerName.includes('farmacia')) {
+        const isLansoprazolFile = lowerName.includes('32493637') || lowerName.includes('formula') || lowerName.includes('lanso');
         simulated = {
           type: 'medication',
           medication: {
-            name: 'Atorvastatina 20mg',
-            dosage: '1 tableta',
-            frequency: 'Cada 24 horas (en la noche)',
-            startDate: new Date().toISOString().split('T')[0],
-            endDate: null,
-            stockQuantity: 30,
-            lowStockAlert: 7,
-            notes: 'Controlar el colesterol. Tomar preferentemente después de la cena.',
+            name: isLansoprazolFile ? 'LANSOPRAZOL' : 'Atorvastatina 20mg',
+            dosage: isLansoprazolFile ? '30 mg (1 cápsula)' : '1 tableta',
+            frequency: isLansoprazolFile ? 'Cada 24 horas (en ayunas)' : 'Cada 24 horas (en la noche)',
+            startDate: '2026-05-29',
+            endDate: isLansoprazolFile ? '2026-11-25' : null,
+            notes: isLansoprazolFile 
+              ? 'Una cápsula todos los días, en ayunas. Tratamiento para 180 días (#180). Recetado por Dra. Maria Camila Rosario Langer Barrera (Neurología).' 
+              : 'Controlar el colesterol. Tomar preferentemente después de la cena.',
           },
         };
-      } else if (lowerName.includes('cita') || lowerName.includes('control') || lowerName.includes('doctor') || lowerName.includes('medico') || lowerName.includes('agenda')) {
+      } else if (lowerName.includes('hc') || lowerName.includes('historia') || lowerName.includes('cita') || lowerName.includes('control') || lowerName.includes('doctor') || lowerName.includes('medico') || lowerName.includes('agenda')) {
+        const isHC32 = lowerName.includes('32493637') || lowerName.includes('hc');
         const futureDate = new Date();
         futureDate.setDate(futureDate.getDate() + 5);
         futureDate.setHours(10, 30, 0, 0);
@@ -74,26 +74,30 @@ export async function POST(request: Request) {
         simulated = {
           type: 'appointment',
           appointment: {
-            doctorName: 'Dr. Alejandro Silva',
-            specialty: 'Oftalmología',
-            location: 'Centro Médico Apoquindo, Box 204',
-            dateTime: futureDate.toISOString(),
-            notes: 'Asistir con lentes ópticos actuales y receta anterior. Dilatación de pupilas requerida.',
+            doctorName: isHC32 ? 'Dra. Maria Camila Rosario Langer Barrera' : 'Dr. Alejandro Silva',
+            specialty: isHC32 ? 'Neurología' : 'Oftalmología',
+            location: isHC32 ? 'Centro de Inmunología y Genética CIGE, CL 54 # 46-27 Piso 8' : 'Centro Médico Apoquindo, Box 204',
+            dateTime: isHC32 ? '2026-05-29T09:30:00Z' : futureDate.toISOString(),
+            notes: isHC32 
+              ? 'Consulta de seguimiento neurológico. Antecedentes de hipertensión y aneurisma cerebral tratado con stent.' 
+              : 'Asistir con lentes ópticos actuales y receta anterior. Dilatación de pupilas requerida.',
           },
         };
       } else {
-        // Default to order/exam if unclear
+        const isSuraOrder = lowerName.includes('32493637') || lowerName.includes('orden') || lowerName.includes('ayudas') || lowerName.includes('remision');
         const expDate = new Date();
-        expDate.setDate(expDate.getDate() + 60); // 2 months validity
+        expDate.setDate(expDate.getDate() + 60);
 
         simulated = {
           type: 'order',
           order: {
-            examType: 'Perfil Lipídico, Hemoglobina Glicosilada y Creatinina',
-            institution: 'Laboratorios Megasalud Sucursal Alameda',
+            examType: isSuraOrder ? 'Estudio Fisiológico Completo del Sueño [Polisomnografía Basal]' : 'Perfil Lipídico, Hemoglobina Glicosilada y Creatinina',
+            institution: isSuraOrder ? 'Centro de Inmunología y Genética CIGE SAS' : 'Laboratorios Megasalud Sucursal Alameda',
             requiredAuthorization: true,
-            expirationDate: expDate.toISOString().split('T')[0],
-            notes: 'Requiere 12 horas de ayuno estricto. Tomar agua permitida.',
+            expirationDate: isSuraOrder ? '2026-09-07' : expDate.toISOString().split('T')[0],
+            notes: isSuraOrder 
+              ? 'Polisomnografía basal - Alto riesgo de apnea de sueño stop bang 5 puntos. Válido hasta 2026/09/07.' 
+              : 'Requiere 12 horas de ayuno estricto. Tomar agua permitida.',
           },
         };
       }
@@ -140,8 +144,6 @@ export async function POST(request: Request) {
           "frequency": "Frecuencia de toma (Ej. Cada 8 horas, 1 vez al día, con el desayuno)",
           "startDate": "Fecha de inicio en formato YYYY-MM-DD. Si no hay, usa la fecha de hoy: 2026-07-25",
           "endDate": "Fecha de término en formato YYYY-MM-DD o null si es tratamiento crónico indefinido",
-          "stockQuantity": 30, // Default estimado por defecto para recetas de un mes
-          "lowStockAlert": 7, // Límite por defecto para alertas
           "notes": "Instrucciones de ingesta adicionales descritas"
         }
       }

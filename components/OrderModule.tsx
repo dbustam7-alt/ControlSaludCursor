@@ -313,6 +313,34 @@ export const OrderModule: React.FC = () => {
     }
   };
 
+  const handleDownloadAttachment = async (path: string) => {
+    if (path.startsWith('http') || path.startsWith('blob:')) {
+      window.open(path, '_blank');
+      return;
+    }
+
+    if (isDemoMode) {
+      alert('Las visualizaciones de documentos reales no están disponibles en Modo Demo.');
+      return;
+    }
+
+    try {
+      // Generate a 5-minute signed URL
+      const { data, error } = await supabase
+        .storage
+        .from('medical-documents')
+        .createSignedUrl(path, 300);
+
+      if (error) throw error;
+      if (data?.signedUrl) {
+        window.open(data.signedUrl, '_blank');
+      }
+    } catch (err) {
+      console.error('Error generating signed URL:', err);
+      alert('No se pudo acceder al documento. Asegúrate de tener permisos suficientes.');
+    }
+  };
+
   const resetForm = () => {
     setExamType('');
     setInstitution('');
@@ -520,16 +548,14 @@ export const OrderModule: React.FC = () => {
                       </div>
                     )}
                     {order.attachmentUrl && (
-                      <div className="flex items-center gap-2">
-                        <LinkIcon className="h-4 w-4 text-slate-400 shrink-0" />
-                        <a
-                          href={order.attachmentUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-indigo-600 hover:text-indigo-800 hover:underline font-semibold flex items-center gap-1 text-xs"
+                      <div className="flex items-center gap-2 pt-1">
+                        <FileText className="h-4 w-4 text-indigo-500 shrink-0" />
+                        <button
+                          onClick={() => handleDownloadAttachment(order.attachmentUrl!)}
+                          className="text-indigo-600 hover:text-indigo-800 hover:underline font-bold text-xs"
                         >
-                          Ver documento adjunto
-                        </a>
+                          Ver orden original digitalizada
+                        </button>
                       </div>
                     )}
                     {order.notes && (
@@ -620,70 +646,66 @@ export const OrderModule: React.FC = () => {
                 <input
                   type="text"
                   required
-                  placeholder="Ej. Centro de Salud Integramédica"
+                  placeholder="Ej. Laboratorio Clínico San Lorenzo"
                   value={institution}
                   onChange={(e) => setInstitution(e.target.value)}
                   className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-slate-800"
                 />
               </div>
 
-              <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                <div>
-                  <span className="block text-sm font-semibold text-slate-800">¿Requiere Autorización Médica?</span>
-                  <span className="block text-xs text-slate-500">¿La aseguradora o Isapre debe visar esta orden?</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={requiredAuth}
-                  onChange={(e) => {
-                    setRequiredAuth(e.target.checked);
-                    if (!e.target.checked) setHasAuth(false);
-                  }}
-                  className="h-4.5 w-4.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                />
-              </div>
-
-              {requiredAuth && (
-                <div className="flex items-center justify-between p-3.5 bg-emerald-50/50 rounded-xl border border-emerald-150 animate-in slide-in-from-top-2 duration-150">
-                  <div>
-                    <span className="block text-sm font-semibold text-emerald-800">¿Ya está autorizada?</span>
-                    <span className="block text-xs text-emerald-600">Marca esta casilla si la orden ya tiene código de autorización.</span>
-                  </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-xs font-bold text-slate-600">Requiere Aut.</span>
                   <input
                     type="checkbox"
-                    checked={hasAuth}
-                    onChange={(e) => setHasAuth(e.target.checked)}
-                    className="h-4.5 w-4.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                    checked={requiredAuth}
+                    onChange={(e) => {
+                      setRequiredAuth(e.target.checked);
+                      if (!e.target.checked) setHasAuth(false);
+                    }}
+                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                   />
                 </div>
-              )}
+                {requiredAuth && (
+                  <div className="flex items-center justify-between p-3.5 bg-emerald-50/50 rounded-xl border border-emerald-150 animate-in slide-in-from-top-2 duration-150">
+                    <span className="text-xs font-bold text-emerald-800">¿Autorizada?</span>
+                    <input
+                      type="checkbox"
+                      checked={hasAuth}
+                      onChange={(e) => setHasAuth(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                    />
+                  </div>
+                )}
+              </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Fecha de Vencimiento de la Orden (Opcional)</label>
-                <input
-                  type="date"
-                  value={expirationDate}
-                  onChange={(e) => setExpirationDate(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-slate-800"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Fecha de Vencimiento (Opcional)</label>
+                  <input
+                    type="date"
+                    value={expirationDate}
+                    onChange={(e) => setExpirationDate(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">URL o Ruta del Adjunto (Opcional)</label>
+                  <input
+                    type="text"
+                    placeholder="Ej. id_workspace/nombre_archivo.pdf"
+                    value={attachmentUrl}
+                    onChange={(e) => setAttachmentUrl(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-slate-800"
+                  />
+                </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Link del Documento / Receta Adjunta (Opcional)</label>
-                <input
-                  type="url"
-                  placeholder="https://enlace-receta-o-documento.pdf"
-                  value={attachmentUrl}
-                  onChange={(e) => setAttachmentUrl(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-slate-800"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Indicaciones o Notas Adicionales (Opcional)</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Notas / Indicaciones (Opcional)</label>
                 <textarea
                   rows={3}
-                  placeholder="Ej. Ir con ropa cómoda sin metales, llevar orden impresa."
+                  placeholder="Ej. Requiere ayuno de 8 horas. Retirar resultados en 3 días."
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-slate-800"
@@ -714,7 +736,7 @@ export const OrderModule: React.FC = () => {
       <ConfirmModal
         isOpen={deleteTargetId !== null}
         title="¿Eliminar orden médica?"
-        message="¿Estás seguro de que deseas eliminar esta orden de examen? Al hacerlo, tu grupo familiar perderá el control de este examen, archivo adjunto y alertas de vencimiento."
+        message="¿Estás seguro de que deseas eliminar esta orden médica? Esta acción es irreversible y tu grupo familiar perderá acceso a la información de esta orden."
         confirmText="Eliminar"
         cancelText="Cancelar"
         onConfirm={handleDeleteOrder}

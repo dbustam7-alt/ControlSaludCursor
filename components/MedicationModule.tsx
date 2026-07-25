@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspaces } from '@/contexts/WorkspaceContext';
 import { createClient } from '@/utils/supabase/client';
-import { Search, Plus, Trash2, CheckCircle, Play, Pause, AlertCircle, X, Pill, Calendar, Clock, Sparkles, MessageSquare } from 'lucide-react';
+import { Search, Plus, Trash2, X, Pill, Calendar, Clock, MessageSquare, Edit2, Play, Pause, FileText, Check } from 'lucide-react';
 import { ConfirmModal } from './ConfirmModal';
 
 export interface Medication {
@@ -15,10 +15,9 @@ export interface Medication {
   frequency: string;
   startDate: string;
   endDate: string | null;
-  stockQuantity: number | null;
-  lowStockAlert: number | null;
   status: 'active' | 'paused' | 'completed';
   notes: string | null;
+  attachmentUrl: string | null;
 }
 
 const MOCK_MEDICATIONS: Medication[] = [
@@ -29,11 +28,10 @@ const MOCK_MEDICATIONS: Medication[] = [
     dosage: '1 tableta',
     frequency: 'Con el almuerzo y cena (Cada 12 horas)',
     startDate: '2026-01-01',
-    endDate: null, // Tratamiento crónico continuo
-    stockQuantity: 12,
-    lowStockAlert: 15, // Low stock since 12 <= 15!
+    endDate: null,
     status: 'active',
     notes: 'Tratamiento de diabetes tipo 2. Tomar con abundante agua.',
+    attachmentUrl: null,
   },
   {
     id: 'med-2',
@@ -43,10 +41,9 @@ const MOCK_MEDICATIONS: Medication[] = [
     frequency: 'En ayunas (Cada 24 horas)',
     startDate: '2026-01-15',
     endDate: null,
-    stockQuantity: 60,
-    lowStockAlert: 10,
     status: 'active',
     notes: 'Control de presión arterial. Monitorear si hay tos seca continua.',
+    attachmentUrl: null,
   },
   {
     id: 'med-3',
@@ -55,11 +52,10 @@ const MOCK_MEDICATIONS: Medication[] = [
     dosage: '1 cápsula',
     frequency: 'Cada 8 horas',
     startDate: '2026-04-10',
-    endDate: '2026-04-17', // Ended
-    stockQuantity: 0,
-    lowStockAlert: 0,
+    endDate: '2026-04-17',
     status: 'completed',
     notes: 'Antibiótico para la infección dental. Completar los 7 días estrictamente.',
+    attachmentUrl: null,
   }
 ];
 
@@ -82,9 +78,8 @@ export const MedicationModule: React.FC = () => {
   const [frequency, setFrequency] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [stockQuantity, setStockQuantity] = useState('');
-  const [lowStockAlert, setLowStockAlert] = useState('');
   const [notes, setNotes] = useState('');
+  const [attachmentUrl, setAttachmentUrl] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
 
   // Deletion Confirmation State
@@ -130,10 +125,9 @@ export const MedicationModule: React.FC = () => {
           frequency: m.frequency,
           startDate: m.start_date,
           endDate: m.end_date,
-          stockQuantity: m.stock_quantity,
-          lowStockAlert: m.low_stock_alert,
           status: m.status,
           notes: m.notes,
+          attachmentUrl: m.attachment_url,
         }));
 
         setMedications(mapped);
@@ -171,8 +165,6 @@ export const MedicationModule: React.FC = () => {
 
     setFormError(null);
     const endStr = endDate ? endDate : null;
-    const stockVal = stockQuantity !== '' ? parseInt(stockQuantity) : null;
-    const alertVal = lowStockAlert !== '' ? parseInt(lowStockAlert) : null;
 
     if (isDemoMode) {
       const newMed: Medication = {
@@ -183,10 +175,9 @@ export const MedicationModule: React.FC = () => {
         frequency,
         startDate,
         endDate: endStr,
-        stockQuantity: stockVal,
-        lowStockAlert: alertVal,
         status: 'active',
         notes: notes.trim() || null,
+        attachmentUrl: attachmentUrl.trim() || null,
       };
 
       const updated = [newMed, ...medications];
@@ -206,10 +197,9 @@ export const MedicationModule: React.FC = () => {
           frequency,
           start_date: startDate,
           end_date: endStr,
-          stock_quantity: stockVal,
-          low_stock_alert: alertVal,
           status: 'active',
           notes: notes.trim() || null,
+          attachment_url: attachmentUrl.trim() || null,
           created_by: user?.id,
         })
         .select()
@@ -225,10 +215,9 @@ export const MedicationModule: React.FC = () => {
         frequency: data.frequency,
         startDate: data.start_date,
         endDate: data.end_date,
-        stockQuantity: data.stock_quantity,
-        lowStockAlert: data.low_stock_alert,
         status: data.status,
         notes: data.notes,
+        attachmentUrl: data.attachment_url,
       };
 
       setMedications([newMed, ...medications]);
@@ -275,30 +264,6 @@ export const MedicationModule: React.FC = () => {
     }
   };
 
-  const handleUpdateStock = async (med: Medication, amount: number) => {
-    if (med.stockQuantity === null) return;
-    const newStock = Math.max(0, med.stockQuantity + amount);
-
-    if (isDemoMode) {
-      const updated = medications.map(m => m.id === med.id ? { ...m, stockQuantity: newStock } : m);
-      saveMedicationsState(updated);
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('medications')
-        .update({ stock_quantity: newStock })
-        .eq('id', med.id);
-
-      if (error) throw error;
-
-      setMedications(medications.map(m => m.id === med.id ? { ...m, stockQuantity: newStock } : m));
-    } catch (err) {
-      console.error('Error updating medication stock:', err);
-    }
-  };
-
   const handleDeleteMedication = async () => {
     if (!deleteTargetId) return;
 
@@ -324,15 +289,42 @@ export const MedicationModule: React.FC = () => {
     }
   };
 
+  const handleDownloadAttachment = async (path: string) => {
+    if (path.startsWith('http') || path.startsWith('blob:')) {
+      window.open(path, '_blank');
+      return;
+    }
+
+    if (isDemoMode) {
+      alert('Las visualizaciones de documentos reales no están disponibles en Modo Demo.');
+      return;
+    }
+    
+    try {
+      // Generar una URL firmada de 5 minutos
+      const { data, error } = await supabase
+        .storage
+        .from('medical-documents')
+        .createSignedUrl(path, 300);
+
+      if (error) throw error;
+      if (data?.signedUrl) {
+        window.open(data.signedUrl, '_blank');
+      }
+    } catch (err) {
+      console.error('Error generating signed URL:', err);
+      alert('No se pudo acceder al documento. Asegúrate de tener permisos suficientes.');
+    }
+  };
+
   const resetForm = () => {
     setName('');
     setDosage('');
     setFrequency('');
     setStartDate('');
     setEndDate('');
-    setStockQuantity('');
-    setLowStockAlert('');
     setNotes('');
+    setAttachmentUrl('');
     setFormError(null);
   };
 
@@ -432,7 +424,7 @@ export const MedicationModule: React.FC = () => {
           <p className="mt-2 text-sm text-slate-500 leading-relaxed">
             {searchTerm || statusFilter !== 'all'
               ? 'No hay medicamentos registrados que coincidan con los filtros aplicados.'
-              : 'Registra los tratamientos de tu familia, configura sus dosis, horarios y límites de stock para recibir avisos de reposición.'}
+              : 'Registra los tratamientos de tu familia, configura sus dosis, horarios e indicaciones para coordinar su cuidado.'}
           </p>
           {!searchTerm && statusFilter === 'all' && (
             <button
@@ -450,11 +442,6 @@ export const MedicationModule: React.FC = () => {
             const isActive = med.status === 'active';
             const isPaused = med.status === 'paused';
             const isCompleted = med.status === 'completed';
-
-            // Check if stock is low or ended
-            const hasStockLimit = med.stockQuantity !== null && med.lowStockAlert !== null;
-            const isLowStock = isActive && hasStockLimit && med.stockQuantity! <= med.lowStockAlert!;
-            const isOutOfStock = isActive && med.stockQuantity !== null && med.stockQuantity === 0;
 
             return (
               <div
@@ -477,16 +464,6 @@ export const MedicationModule: React.FC = () => {
                       <span className="flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-semibold">
                         <Pause className="h-3 w-3 shrink-0" />
                         Pausado
-                      </span>
-                    ) : isOutOfStock ? (
-                      <span className="flex items-center gap-1 px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-xs font-bold animate-pulse">
-                        <AlertCircle className="h-3 w-3 shrink-0" />
-                        Sin Stock
-                      </span>
-                    ) : isLowStock ? (
-                      <span className="flex items-center gap-1 px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-xs font-semibold">
-                        <AlertCircle className="h-3 w-3 shrink-0" />
-                        Stock Bajo ({med.stockQuantity} unid)
                       </span>
                     ) : (
                       <span className="flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-semibold">
@@ -516,40 +493,15 @@ export const MedicationModule: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Stock tracker bar */}
-                    {med.stockQuantity !== null && (
-                      <div className="bg-slate-50 border border-slate-100 p-3 rounded-xl space-y-2 mt-2">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-semibold text-slate-600">Control de Stock:</span>
-                          <span className={`font-bold ${isLowStock ? 'text-rose-600' : 'text-slate-800'}`}>
-                            {med.stockQuantity} unidades disp.
-                          </span>
-                        </div>
-                        {isActive && (
-                          <div className="flex items-center gap-2.5 pt-1">
-                            <button
-                              onClick={() => handleUpdateStock(med, -1)}
-                              className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 font-bold rounded-lg text-xs"
-                            >
-                              -1 Toma
-                            </button>
-                            <button
-                              onClick={() => handleUpdateStock(med, 1)}
-                              className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 font-bold rounded-lg text-xs"
-                            >
-                              +1 Toma
-                            </button>
-                            <button
-                              onClick={() => {
-                                const q = prompt('Ingresa la cantidad de cajas/unidades de reposición:', '30');
-                                if (q && !isNaN(parseInt(q))) handleUpdateStock(med, parseInt(q));
-                              }}
-                              className="px-2.5 py-0.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold rounded-lg text-xs ml-auto"
-                            >
-                              Reponer Stock
-                            </button>
-                          </div>
-                        )}
+                    {med.attachmentUrl && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <FileText className="h-4 w-4 text-indigo-500 shrink-0" />
+                        <button
+                          onClick={() => handleDownloadAttachment(med.attachmentUrl!)}
+                          className="text-indigo-600 hover:text-indigo-800 hover:underline font-bold text-xs"
+                        >
+                          Ver receta original digitalizada
+                        </button>
                       </div>
                     )}
 
@@ -694,29 +646,15 @@ export const MedicationModule: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Stock Actual (Opcional)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="Ej. 30"
-                    value={stockQuantity}
-                    onChange={(e) => setStockQuantity(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-slate-800"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Aviso Stock Bajo (Opcional)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="Ej. 7"
-                    value={lowStockAlert}
-                    onChange={(e) => setLowStockAlert(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-slate-800"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">URL o Ruta del Adjunto (Opcional)</label>
+                <input
+                  type="text"
+                  placeholder="Ej. id_workspace/nombre_archivo.pdf"
+                  value={attachmentUrl}
+                  onChange={(e) => setAttachmentUrl(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-slate-800"
+                />
               </div>
 
               <div>
@@ -754,7 +692,7 @@ export const MedicationModule: React.FC = () => {
       <ConfirmModal
         isOpen={deleteTargetId !== null}
         title="¿Eliminar medicamento del plan?"
-        message="¿Estás seguro de que deseas eliminar este medicamento de tu plan familiar? Se perderán todos los datos de stock, dosificación y alertas asociadas."
+        message="¿Estás seguro de que deseas eliminar este medicamento de tu plan familiar? Se perderán todos los datos de dosificación y alertas asociadas."
         confirmText="Eliminar"
         cancelText="Cancelar"
         onConfirm={handleDeleteMedication}
