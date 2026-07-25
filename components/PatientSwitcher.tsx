@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { usePatients, PatientRelationship } from '@/contexts/PatientContext';
 import { useWorkspaces } from '@/contexts/WorkspaceContext';
-import { User, ChevronDown, Plus, Check, Users, X } from 'lucide-react';
+import { User, ChevronDown, Plus, Check, Users, X, Mail, BadgeCheck } from 'lucide-react';
 
 const RELATIONSHIP_LABELS: Record<PatientRelationship, string> = {
   self: 'Yo / Titular',
@@ -27,7 +27,9 @@ export const PatientSwitcher: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
   const [relationship, setRelationship] = useState<PatientRelationship>('parent');
+  const [inviteToWorkspace, setInviteToWorkspace] = useState(true);
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,6 +40,14 @@ export const PatientSwitcher: React.FC = () => {
       ? 'Todos los pacientes'
       : patients.find((p) => p.id === filterPatientId)?.fullName || 'Paciente';
 
+  const resetForm = () => {
+    setFullName('');
+    setEmail('');
+    setRelationship('parent');
+    setInviteToWorkspace(true);
+    setError(null);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName.trim()) return;
@@ -47,12 +57,13 @@ export const PatientSwitcher: React.FC = () => {
     const res = await createPatient({
       fullName: fullName.trim(),
       relationship,
+      email: email.trim() || undefined,
+      inviteToWorkspace,
     });
     setFormLoading(false);
 
     if (res.success) {
-      setFullName('');
-      setRelationship('parent');
+      resetForm();
       setIsCreateOpen(false);
       setIsOpen(false);
     } else {
@@ -98,7 +109,7 @@ export const PatientSwitcher: React.FC = () => {
               {filterPatientId === null && <Check className="h-4 w-4 shrink-0" />}
             </button>
 
-            <div className="space-y-0.5 max-h-40 overflow-y-auto my-1">
+            <div className="space-y-0.5 max-h-48 overflow-y-auto my-1">
               {patients.map((p) => (
                 <button
                   key={p.id}
@@ -112,10 +123,16 @@ export const PatientSwitcher: React.FC = () => {
                       : 'text-slate-700 hover:bg-slate-50'
                   }`}
                 >
-                  <span className="truncate text-left">
-                    <span className="block truncate">{p.fullName}</span>
-                    <span className="block text-[10px] font-medium text-slate-400">
+                  <span className="truncate text-left min-w-0">
+                    <span className="flex items-center gap-1.5 truncate">
+                      <span className="truncate">{p.fullName}</span>
+                      {p.linkedUserId && (
+                        <BadgeCheck className="h-3.5 w-3.5 text-emerald-500 shrink-0" title="Tiene cuenta vinculada" />
+                      )}
+                    </span>
+                    <span className="block text-[10px] font-medium text-slate-400 truncate">
                       {RELATIONSHIP_LABELS[p.relationship]}
+                      {p.email ? ` · ${p.email}` : ''}
                     </span>
                   </span>
                   {filterPatientId === p.id && <Check className="h-4 w-4 shrink-0" />}
@@ -150,7 +167,7 @@ export const PatientSwitcher: React.FC = () => {
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsCreateOpen(false)} />
           <form
             onSubmit={handleCreate}
-            className="relative bg-white rounded-2xl max-w-md w-full p-6 shadow-soft border border-slate-100 z-10"
+            className="relative bg-white rounded-2xl max-w-md w-full p-6 shadow-soft border border-slate-100 z-10 max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-slate-900">Nuevo paciente</h3>
@@ -160,8 +177,8 @@ export const PatientSwitcher: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-              Los pacientes son las personas cuyo cuidado monitorean en este espacio (ej. Papá, Mamá).
-              Tú y tu hermana pueden ver la misma información al compartir el grupo familiar.
+              Crea el perfil de cuidado (ej. Papá, Mamá). Si agregas su correo, se vincula a su cuenta cuando inicie sesión,
+              como tu propio perfil.
             </p>
 
             {error && (
@@ -187,6 +204,25 @@ export const PatientSwitcher: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  Correo (opcional)
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <input
+                    type="email"
+                    placeholder="papa@correo.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-800"
+                  />
+                </div>
+                <p className="mt-1.5 text-[11px] text-slate-500 leading-relaxed">
+                  Si esa persona ya tiene cuenta en ControlSalud, se vincula automáticamente. Si aún no, se vincula cuando se registre con ese correo.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
                   Relación familiar
                 </label>
                 <select
@@ -201,6 +237,21 @@ export const PatientSwitcher: React.FC = () => {
                   ))}
                 </select>
               </div>
+
+              {activeWorkspace.type === 'family' && email.trim() && (
+                <label className="flex items-start gap-2.5 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={inviteToWorkspace}
+                    onChange={(e) => setInviteToWorkspace(e.target.checked)}
+                    className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-xs text-slate-700 leading-relaxed">
+                    <span className="font-semibold block mb-0.5">Invitar al grupo familiar</span>
+                    Podrá iniciar sesión y ver/editar la información compartida de este grupo.
+                  </span>
+                </label>
+              )}
             </div>
 
             <div className="mt-6 flex items-center justify-end gap-3">

@@ -48,6 +48,7 @@ CREATE TABLE public.workspace_members (
 
 -- TABLA DE PACIENTES / PERFILES DE CUIDADO (patients)
 -- Personas cuyo historial se monitorea dentro de un workspace familiar (ej. Papá, Mamá)
+-- Pueden tener correo y vincularse a un perfil de usuario (linked_user_id) cuando se registran
 CREATE TABLE public.patients (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
@@ -55,9 +56,16 @@ CREATE TABLE public.patients (
   relationship TEXT NOT NULL DEFAULT 'other' CHECK (relationship IN ('self', 'parent', 'sibling', 'child', 'spouse', 'other')),
   birth_date DATE,
   notes TEXT,
+  email TEXT, -- Correo del paciente (opcional); se normaliza a minúsculas
+  linked_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL, -- Perfil/cuenta vinculada
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Un correo único por workspace (cuando se informa)
+CREATE UNIQUE INDEX patients_workspace_email_unique
+  ON public.patients (workspace_id, lower(email))
+  WHERE email IS NOT NULL;
 
 -- TABLA DE CITAS MÉDICAS (appointments)
 CREATE TABLE public.appointments (
@@ -146,6 +154,12 @@ BEGIN
     'patient'
   );
 
+  -- Vincular perfiles de paciente pendientes con este correo
+  UPDATE public.patients
+  SET linked_user_id = NEW.id
+  WHERE lower(email) = lower(NEW.email)
+    AND linked_user_id IS NULL;
+
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -177,16 +191,22 @@ CREATE POLICY "Users can update their own profile"
   USING (auth.uid() = id);
 
 -- Función auxiliar para verificar si un usuario autenticado pertenece a un workspace
+-- Incluye membresía por email Y al creador del workspace (evita bloqueos si falta el row en members)
 CREATE OR REPLACE FUNCTION public.is_workspace_member(workspace_id UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
   RETURN EXISTS (
-    SELECT 1 FROM public.workspace_members
-    WHERE workspace_members.workspace_id = is_workspace_member.workspace_id
-    AND workspace_members.email = auth.email()
+    SELECT 1 FROM public.workspace_members wm
+    WHERE wm.workspace_id = is_workspace_member.workspace_id
+      AND lower(wm.email) = lower(COALESCE(auth.email(), ''))
+  )
+  OR EXISTS (
+    SELECT 1 FROM public.workspaces w
+    WHERE w.id = is_workspace_member.workspace_id
+      AND w.created_by = auth.uid()
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- 4.2 POLÍTICAS PARA: workspaces
 CREATE POLICY "Members can view workspaces"

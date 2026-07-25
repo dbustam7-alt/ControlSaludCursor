@@ -14,6 +14,18 @@ export interface Patient {
   relationship: PatientRelationship;
   birthDate: string | null;
   notes: string | null;
+  email: string | null;
+  linkedUserId: string | null;
+}
+
+interface CreatePatientInput {
+  fullName: string;
+  relationship: PatientRelationship;
+  birthDate?: string;
+  notes?: string;
+  email?: string;
+  /** Si hay email, también invitar al grupo familiar como miembro */
+  inviteToWorkspace?: boolean;
 }
 
 interface PatientContextType {
@@ -23,15 +35,10 @@ interface PatientContextType {
   filterPatientId: string | null;
   loading: boolean;
   setFilterPatientId: (patientId: string | null) => void;
-  createPatient: (data: {
-    fullName: string;
-    relationship: PatientRelationship;
-    birthDate?: string;
-    notes?: string;
-  }) => Promise<{ success: boolean; data?: Patient; error?: string }>;
+  createPatient: (data: CreatePatientInput) => Promise<{ success: boolean; data?: Patient; error?: string }>;
   updatePatient: (
     patientId: string,
-    data: Partial<Pick<Patient, 'fullName' | 'relationship' | 'birthDate' | 'notes'>>
+    data: Partial<Pick<Patient, 'fullName' | 'relationship' | 'birthDate' | 'notes' | 'email'>>
   ) => Promise<{ success: boolean; error?: string }>;
   deletePatient: (patientId: string) => Promise<{ success: boolean; error?: string }>;
   refreshPatients: () => Promise<void>;
@@ -47,6 +54,8 @@ const MOCK_PATIENTS: Patient[] = [
     relationship: 'self',
     birthDate: null,
     notes: null,
+    email: 'demo.familiar@controlsalud.com',
+    linkedUserId: '00000000-0000-0000-0000-000000000000',
   },
   {
     id: 'patient-papa',
@@ -55,6 +64,8 @@ const MOCK_PATIENTS: Patient[] = [
     relationship: 'parent',
     birthDate: null,
     notes: 'Paciente principal - monitoreo familiar',
+    email: null,
+    linkedUserId: null,
   },
   {
     id: 'patient-mama',
@@ -63,8 +74,31 @@ const MOCK_PATIENTS: Patient[] = [
     relationship: 'parent',
     birthDate: null,
     notes: 'Paciente principal - monitoreo familiar',
+    email: null,
+    linkedUserId: null,
   },
 ];
+
+function mapPatient(p: any): Patient {
+  return {
+    id: p.id,
+    workspaceId: p.workspace_id ?? p.workspaceId,
+    fullName: p.full_name ?? p.fullName,
+    relationship: p.relationship,
+    birthDate: p.birth_date ?? p.birthDate ?? null,
+    notes: p.notes ?? null,
+    email: p.email ?? null,
+    linkedUserId: p.linked_user_id ?? p.linkedUserId ?? null,
+  };
+}
+
+function toMemberRelationship(
+  relationship: PatientRelationship
+): 'patient' | 'sibling' | 'child' | 'parent' | 'caregiver' | 'doctor' | 'other' {
+  if (relationship === 'self') return 'patient';
+  if (relationship === 'spouse') return 'other';
+  return relationship;
+}
 
 export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isDemoMode } = useAuth();
@@ -108,7 +142,6 @@ export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const filtered = list.filter((p) => p.workspaceId === activeWorkspace.id);
         setPatients(filtered);
 
-        // Por defecto "Todos": no auto-seleccionar paciente (evita ocultar datos legacy)
         const savedPatientId = localStorage.getItem(`active_patient_${activeWorkspace.id}`);
         if (savedPatientId && filtered.some((p) => p.id === savedPatientId)) {
           setFilterPatientIdState(savedPatientId);
@@ -126,14 +159,7 @@ export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       if (error) throw error;
 
-      let mapped: Patient[] = (data || []).map((p: any) => ({
-        id: p.id,
-        workspaceId: p.workspace_id,
-        fullName: p.full_name,
-        relationship: p.relationship,
-        birthDate: p.birth_date,
-        notes: p.notes,
-      }));
+      let mapped: Patient[] = (data || []).map(mapPatient);
 
       // En espacio personal, crear paciente "Yo" automáticamente si no hay ninguno
       if (mapped.length === 0 && activeWorkspace.type === 'personal') {
@@ -143,28 +169,20 @@ export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ child
             workspace_id: activeWorkspace.id,
             full_name: user.displayName || 'Yo',
             relationship: 'self',
+            email: user.email || null,
+            linked_user_id: user.id,
             created_by: user.id,
           })
           .select()
           .single();
 
         if (!createErr && created) {
-          mapped = [
-            {
-              id: created.id,
-              workspaceId: created.workspace_id,
-              fullName: created.full_name,
-              relationship: created.relationship,
-              birthDate: created.birth_date,
-              notes: created.notes,
-            },
-          ];
+          mapped = [mapPatient(created)];
         }
       }
 
       setPatients(mapped);
 
-      // Por defecto "Todos": no auto-seleccionar paciente (evita ocultar datos legacy)
       const savedPatientId = localStorage.getItem(`active_patient_${activeWorkspace.id}`);
       if (savedPatientId && mapped.some((p) => p.id === savedPatientId)) {
         setFilterPatientIdState(savedPatientId);
@@ -189,10 +207,14 @@ export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ child
     relationship,
     birthDate,
     notes,
+    email,
+    inviteToWorkspace = true,
   }) => {
     if (!activeWorkspace || !user) {
       return { success: false, error: 'No hay espacio de trabajo activo.' };
     }
+
+    const normalizedEmail = email?.trim() ? email.trim().toLowerCase() : null;
 
     if (isDemoMode) {
       const newPatient: Patient = {
@@ -202,6 +224,8 @@ export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ child
         relationship,
         birthDate: birthDate || null,
         notes: notes || null,
+        email: normalizedEmail,
+        linkedUserId: null,
       };
       const saved = localStorage.getItem('demo_patients');
       const list: Patient[] = saved ? JSON.parse(saved) : [];
@@ -221,6 +245,7 @@ export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ child
           relationship,
           birth_date: birthDate || null,
           notes: notes || null,
+          email: normalizedEmail,
           created_by: user.id,
         })
         .select()
@@ -228,21 +253,41 @@ export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       if (error) throw error;
 
-      const mapped: Patient = {
-        id: data.id,
-        workspaceId: data.workspace_id,
-        fullName: data.full_name,
-        relationship: data.relationship,
-        birthDate: data.birth_date,
-        notes: data.notes,
-      };
+      const mapped = mapPatient(data);
+
+      // Invitar al correo al grupo (para que pueda iniciar sesión y ver el espacio)
+      if (normalizedEmail && inviteToWorkspace && activeWorkspace.type === 'family') {
+        const { data: existingMembers } = await supabase
+          .from('workspace_members')
+          .select('id')
+          .eq('workspace_id', activeWorkspace.id)
+          .ilike('email', normalizedEmail)
+          .limit(1);
+
+        if (!existingMembers || existingMembers.length === 0) {
+          const { error: inviteError } = await supabase.from('workspace_members').insert({
+            workspace_id: activeWorkspace.id,
+            email: normalizedEmail,
+            display_name: fullName.trim(),
+            relationship: toMemberRelationship(relationship),
+            role: 'member',
+          });
+          if (inviteError) {
+            console.warn('Paciente creado, pero no se pudo invitar al grupo:', inviteError.message);
+          }
+        }
+      }
 
       setPatients((prev) => [...prev, mapped].sort((a, b) => a.fullName.localeCompare(b.fullName)));
       setFilterPatientId(mapped.id);
       return { success: true, data: mapped };
     } catch (err: any) {
       console.error('Error creating patient:', err);
-      return { success: false, error: err.message || 'Error al crear el paciente.' };
+      const msg = err.message || 'Error al crear el paciente.';
+      if (msg.includes('patients_workspace_email_unique')) {
+        return { success: false, error: 'Ya existe un paciente con ese correo en este grupo.' };
+      }
+      return { success: false, error: msg };
     }
   };
 
@@ -258,6 +303,7 @@ export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ child
               relationship: data.relationship ?? p.relationship,
               birthDate: data.birthDate !== undefined ? data.birthDate : p.birthDate,
               notes: data.notes !== undefined ? data.notes : p.notes,
+              email: data.email !== undefined ? data.email : p.email,
             }
           : p
       );
@@ -272,23 +318,18 @@ export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (data.relationship !== undefined) payload.relationship = data.relationship;
       if (data.birthDate !== undefined) payload.birth_date = data.birthDate;
       if (data.notes !== undefined) payload.notes = data.notes;
+      if (data.email !== undefined) payload.email = data.email?.trim() ? data.email.trim().toLowerCase() : null;
 
-      const { error } = await supabase.from('patients').update(payload).eq('id', patientId);
+      const { data: updatedRow, error } = await supabase
+        .from('patients')
+        .update(payload)
+        .eq('id', patientId)
+        .select()
+        .single();
       if (error) throw error;
 
-      setPatients((prev) =>
-        prev.map((p) =>
-          p.id === patientId
-            ? {
-                ...p,
-                fullName: data.fullName ?? p.fullName,
-                relationship: data.relationship ?? p.relationship,
-                birthDate: data.birthDate !== undefined ? data.birthDate : p.birthDate,
-                notes: data.notes !== undefined ? data.notes : p.notes,
-              }
-            : p
-        )
-      );
+      const mapped = mapPatient(updatedRow);
+      setPatients((prev) => prev.map((p) => (p.id === patientId ? mapped : p)));
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'Error al actualizar el paciente.' };
