@@ -17,6 +17,7 @@ export interface Appointment {
   status: 'pending' | 'completed';
   notes: string | null;
   attachmentUrl: string | null;
+  fileHash?: string | null;
 }
 
 const DEFAULT_MOCK_APPOINTMENTS: Appointment[] = [
@@ -123,6 +124,7 @@ export const AppointmentModule: React.FC = () => {
           status: appt.status,
           notes: appt.notes,
           attachmentUrl: appt.attachment_url,
+          fileHash: appt.file_hash,
         }));
 
         setAppointments(mapped);

@@ -18,6 +18,7 @@ export interface Medication {
   status: 'active' | 'paused' | 'completed';
   notes: string | null;
   attachmentUrl: string | null;
+  fileHash?: string | null;
 }
 
 const MOCK_MEDICATIONS: Medication[] = [
@@ -128,6 +129,7 @@ export const MedicationModule: React.FC = () => {
           status: m.status,
           notes: m.notes,
           attachmentUrl: m.attachment_url,
+          fileHash: m.file_hash,
         }));
 
         setMedications(mapped);

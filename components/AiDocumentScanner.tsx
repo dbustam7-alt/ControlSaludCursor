@@ -29,6 +29,12 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
   // Scanned / Preview states
   const [scannedData, setScannedData] = useState<any | null>(null);
   const [detectedType, setDetectedType] = useState<'appointment' | 'order' | 'medication' | null>(null);
+  const [calculatedHash, setCalculatedHash] = useState<string | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    type: string;
+    detail: string;
+    isSameFile: boolean;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Edit states for Human-in-the-loop preview
@@ -52,6 +58,160 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
   const [medStart, setMedStartDate] = useState('');
   const [medEnd, setMedEndDate] = useState('');
   const [medNotes, setMedNotes] = useState('');
+
+  const calculateFileHash = async (fileObj: File): Promise<string> => {
+    const arrayBuffer = await fileObj.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+
+  const checkDuplicateHash = async (hash: string, workspaceId: string) => {
+    if (isDemoMode) {
+      const apptsSaved = localStorage.getItem('demo_appointments');
+      const appts: any[] = apptsSaved ? JSON.parse(apptsSaved) : [];
+      const apptDup = appts.find(a => a.workspaceId === workspaceId && a.fileHash === hash);
+      if (apptDup) {
+        return { exists: true, type: 'appointment', detail: `Cita con el Dr. ${apptDup.doctorName}` };
+      }
+
+      const ordersSaved = localStorage.getItem('demo_orders');
+      const orders: any[] = ordersSaved ? JSON.parse(ordersSaved) : [];
+      const orderDup = orders.find(o => o.workspaceId === workspaceId && o.fileHash === hash);
+      if (orderDup) {
+        return { exists: true, type: 'order', detail: `Orden médica para ${orderDup.examType}` };
+      }
+
+      const medsSaved = localStorage.getItem('demo_medications');
+      const meds: any[] = medsSaved ? JSON.parse(medsSaved) : [];
+      const medDup = meds.find(m => m.workspaceId === workspaceId && m.fileHash === hash);
+      if (medDup) {
+        return { exists: true, type: 'medication', detail: `Medicamento: ${medDup.name}` };
+      }
+
+      return { exists: false };
+    } else {
+      const { data: apptData } = await supabase
+        .from('appointments')
+        .select('id, doctor_name')
+        .eq('workspace_id', workspaceId)
+        .eq('file_hash', hash)
+        .limit(1);
+
+      if (apptData && apptData.length > 0) {
+        return { exists: true, type: 'appointment', detail: `Cita con el Dr. ${apptData[0].doctor_name}` };
+      }
+
+      const { data: orderData } = await supabase
+        .from('medical_orders')
+        .select('id, exam_type')
+        .eq('workspace_id', workspaceId)
+        .eq('file_hash', hash)
+        .limit(1);
+
+      if (orderData && orderData.length > 0) {
+        return { exists: true, type: 'order', detail: `Orden médica para ${orderData[0].exam_type}` };
+      }
+
+      const { data: medData } = await supabase
+        .from('medications')
+        .select('id, name')
+        .eq('workspace_id', workspaceId)
+        .eq('file_hash', hash)
+        .limit(1);
+
+      if (medData && medData.length > 0) {
+        return { exists: true, type: 'medication', detail: `Medicamento: ${medData[0].name}` };
+      }
+
+      return { exists: false };
+    }
+  };
+
+  const checkSimilarRecord = async (
+    type: 'appointment' | 'order' | 'medication',
+    data: any,
+    workspaceId: string
+  ) => {
+    if (isDemoMode) {
+      if (type === 'appointment') {
+        const saved = localStorage.getItem('demo_appointments');
+        const list: any[] = saved ? JSON.parse(saved) : [];
+        const dateOnly = data.apptDate;
+        const dup = list.find(a => 
+          a.workspaceId === workspaceId && 
+          a.doctorName.toLowerCase().trim() === data.apptDoctor.toLowerCase().trim() &&
+          a.dateTime.substring(0, 10) === dateOnly
+        );
+        if (dup) {
+          return { exists: true, detail: `Ya tienes una cita registrada con el Dr. ${dup.doctorName} para este día.` };
+        }
+      } else if (type === 'order') {
+        const saved = localStorage.getItem('demo_orders');
+        const list: any[] = saved ? JSON.parse(saved) : [];
+        const dup = list.find(o => 
+          o.workspaceId === workspaceId &&
+          o.examType.toLowerCase().trim() === data.orderExam.toLowerCase().trim() &&
+          o.institution.toLowerCase().trim() === data.orderInst.toLowerCase().trim()
+        );
+        if (dup) {
+          return { exists: true, detail: `Ya tienes una orden registrada de "${dup.examType}" en la institución "${dup.institution}".` };
+        }
+      } else if (type === 'medication') {
+        const saved = localStorage.getItem('demo_medications');
+        const list: any[] = saved ? JSON.parse(saved) : [];
+        const dup = list.find(m => 
+          m.workspaceId === workspaceId &&
+          m.name.toLowerCase().trim() === data.medName.toLowerCase().trim() &&
+          m.dosage.toLowerCase().trim() === data.medDosage.toLowerCase().trim()
+        );
+        if (dup) {
+          return { exists: true, detail: `Ya tienes registrado el medicamento "${dup.name}" con la dosis "${dup.dosage}".` };
+        }
+      }
+      return { exists: false };
+    } else {
+      if (type === 'appointment') {
+        const dateOnly = data.apptDate;
+        if (!data.apptDoctor || !dateOnly) return { exists: false };
+        const { data: dups } = await supabase
+          .from('appointments')
+          .select('id, doctor_name, date_time')
+          .eq('workspace_id', workspaceId)
+          .ilike('doctor_name', `%${data.apptDoctor.trim()}%`);
+        
+        const dup = (dups || []).find(a => a.date_time.substring(0, 10) === dateOnly);
+        if (dup) {
+          return { exists: true, detail: `Ya tienes una cita registrada con el Dr. ${dup.doctor_name} para este día.` };
+        }
+      } else if (type === 'order') {
+        if (!data.orderExam || !data.orderInst) return { exists: false };
+        const { data: dups } = await supabase
+          .from('medical_orders')
+          .select('id, exam_type, institution')
+          .eq('workspace_id', workspaceId)
+          .ilike('exam_type', `%${data.orderExam.trim()}%`)
+          .ilike('institution', `%${data.orderInst.trim()}%`);
+        
+        if (dups && dups.length > 0) {
+          return { exists: true, detail: `Ya tienes una orden registrada de "${dups[0].exam_type}" en la institución "${dups[0].institution}".` };
+        }
+      } else if (type === 'medication') {
+        if (!data.medName || !data.medDosage) return { exists: false };
+        const { data: dups } = await supabase
+          .from('medications')
+          .select('id, name, dosage')
+          .eq('workspace_id', workspaceId)
+          .ilike('name', `%${data.medName.trim()}%`)
+          .ilike('dosage', `%${data.medDosage.trim()}%`);
+        
+        if (dups && dups.length > 0) {
+          return { exists: true, detail: `Ya tienes registrado el medicamento "${dups[0].name}" con la dosis "${dups[0].dosage}".` };
+        }
+      }
+      return { exists: false };
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -81,7 +241,7 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
     }
   };
 
-  const handleFileSelected = (selectedFile: File) => {
+  const handleFileSelected = async (selectedFile: File) => {
     // Validate file type
     const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
     if (!validTypes.includes(selectedFile.type)) {
@@ -91,7 +251,30 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
 
     setFile(selectedFile);
     setError(null);
-    startScanning(selectedFile);
+    setDuplicateWarning(null);
+
+    if (!activeWorkspace) return;
+
+    try {
+      setScanning(true);
+      const hash = await calculateFileHash(selectedFile);
+      setCalculatedHash(hash);
+
+      const dupCheck = await checkDuplicateHash(hash, activeWorkspace.id);
+      if (dupCheck.exists) {
+        setDuplicateWarning({
+          type: dupCheck.type!,
+          detail: dupCheck.detail!,
+          isSameFile: true
+        });
+        setScanning(false);
+      } else {
+        startScanning(selectedFile);
+      }
+    } catch (err: any) {
+      console.error("Error al calcular hash o validar duplicados:", err);
+      startScanning(selectedFile);
+    }
   };
 
   const startScanning = async (targetFile: File) => {
@@ -141,44 +324,105 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
     }
   };
 
-  const populateVerificationFields = (extracted: any) => {
+  const populateVerificationFields = async (extracted: any) => {
     const type = extracted.type;
     setDetectedType(type);
     setScannedData(extracted);
 
+    let apptDoctorStr = '';
+    let apptSpecialtyStr = '';
+    let apptLocationStr = '';
+    let apptDateStr = '';
+    let apptTimeStr = '';
+    let apptNotesStr = '';
+
+    let orderExamStr = '';
+    let orderInstStr = '';
+    let orderReqAuthVal = false;
+    let orderExpDateStr = '';
+    let orderNotesStr = '';
+
+    let medNameStr = '';
+    let medDosageStr = '';
+    let medFreqStr = '';
+    let medStartStr = '';
+    let medEndStr = '';
+    let medNotesStr = '';
+
     if (type === 'appointment' && extracted.appointment) {
       const appt = extracted.appointment;
-      setApptDoctor(appt.doctorName || '');
-      setApptSpecialty(appt.specialty || '');
-      setApptLocation(appt.location || '');
+      apptDoctorStr = appt.doctorName || '';
+      apptSpecialtyStr = appt.specialty || '';
+      apptLocationStr = appt.location || '';
       
       if (appt.dateTime) {
         const dt = new Date(appt.dateTime);
         if (!isNaN(dt.getTime())) {
-          setApptDate(dt.toISOString().split('T')[0]);
-          setApptTime(dt.toTimeString().split(' ')[0].substring(0, 5));
+          apptDateStr = dt.toISOString().split('T')[0];
+          apptTimeStr = dt.toTimeString().split(' ')[0].substring(0, 5);
         }
       }
-      setApptNotes(appt.notes || '');
+      apptNotesStr = appt.notes || '';
+
+      setApptDoctor(apptDoctorStr);
+      setApptSpecialty(apptSpecialtyStr);
+      setApptLocation(apptLocationStr);
+      setApptDate(apptDateStr);
+      setApptTime(apptTimeStr);
+      setApptNotes(apptNotesStr);
     } else if (type === 'order' && extracted.order) {
       const order = extracted.order;
-      setOrderExam(order.examType || '');
-      setOrderInst(order.institution || '');
-      setOrderRequiredAuth(order.requiredAuthorization || false);
+      orderExamStr = order.examType || '';
+      orderInstStr = order.institution || '';
+      orderReqAuthVal = order.requiredAuthorization || false;
+      orderExpDateStr = order.expirationDate || '';
+      orderNotesStr = order.notes || '';
+
+      setOrderExam(orderExamStr);
+      setOrderInst(orderInstStr);
+      setOrderRequiredAuth(orderReqAuthVal);
       setOrderHasAuth(false);
-      setOrderExpDate(order.expirationDate || '');
-      setOrderNotes(order.notes || '');
+      setOrderExpDate(orderExpDateStr);
+      setOrderNotes(orderNotesStr);
     } else if (type === 'medication' && extracted.medication) {
       const med = extracted.medication;
-      setMedName(med.name || '');
-      setMedDosage(med.dosage || '');
-      setMedFrequency(med.frequency || '');
-      setMedStartDate(med.startDate || new Date().toISOString().split('T')[0]);
-      setMedEndDate(med.endDate || '');
-      setMedNotes(med.notes || '');
+      medNameStr = med.name || '';
+      medDosageStr = med.dosage || '';
+      medFreqStr = med.frequency || '';
+      medStartStr = med.startDate || new Date().toISOString().split('T')[0];
+      medEndStr = med.endDate || '';
+      medNotesStr = med.notes || '';
+
+      setMedName(medNameStr);
+      setMedDosage(medDosageStr);
+      setMedFrequency(medFreqStr);
+      setMedStartDate(medStartStr);
+      setMedEndDate(medEndStr);
+      setMedNotes(medNotesStr);
     }
 
     setScanning(false);
+
+    if (activeWorkspace) {
+      const checkData = type === 'appointment' 
+        ? { apptDoctor: apptDoctorStr, apptDate: apptDateStr }
+        : type === 'order'
+        ? { orderExam: orderExamStr, orderInst: orderInstStr }
+        : { medName: medNameStr, medDosage: medDosageStr };
+
+      try {
+        const simCheck = await checkSimilarRecord(type, checkData, activeWorkspace.id);
+        if (simCheck.exists) {
+          setDuplicateWarning({
+            type,
+            detail: simCheck.detail!,
+            isSameFile: false
+          });
+        }
+      } catch (err) {
+        console.error("Error al verificar registros similares:", err);
+      }
+    }
   };
 
   const handleSaveConfirmed = async () => {
@@ -227,6 +471,7 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
             status: 'pending',
             notes: apptNotes || null,
             attachmentUrl: storagePath,
+            fileHash: calculatedHash,
           };
           
           localStorage.setItem('demo_appointments', JSON.stringify([newAppt, ...list]));
@@ -240,6 +485,7 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
             status: 'pending',
             notes: apptNotes || null,
             attachment_url: storagePath,
+            file_hash: calculatedHash,
             created_by: user?.id,
           });
           if (dbErr) throw dbErr;
@@ -260,6 +506,7 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
             hasAuthorization: orderReqAuth ? orderHasAuth : false,
             expirationDate: orderExpDate || null,
             attachmentUrl: storagePath,
+            fileHash: calculatedHash,
             status: 'pending',
             notes: orderNotes || null,
           };
@@ -274,6 +521,7 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
             has_authorization: orderReqAuth ? orderHasAuth : false,
             expiration_date: orderExpDate || null,
             attachment_url: storagePath,
+            file_hash: calculatedHash,
             status: 'pending',
             notes: orderNotes || null,
             created_by: user?.id,
@@ -298,6 +546,7 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
             status: 'active',
             notes: medNotes || null,
             attachmentUrl: storagePath,
+            fileHash: calculatedHash,
           };
           
           localStorage.setItem('demo_medications', JSON.stringify([newMed, ...list]));
@@ -312,6 +561,7 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
             status: 'active',
             notes: medNotes || null,
             attachment_url: storagePath,
+            file_hash: calculatedHash,
             created_by: user?.id,
           });
           if (dbErr) throw dbErr;
@@ -333,6 +583,8 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
     setScanning(false);
     setScannedData(null);
     setDetectedType(null);
+    setCalculatedHash(null);
+    setDuplicateWarning(null);
     setError(null);
     onClose();
   };
@@ -367,7 +619,7 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
         )}
 
         {/* STEP 1: DROPZONE (Before Scan) */}
-        {!scanning && !scannedData && (
+        {!scanning && !scannedData && (!duplicateWarning || !duplicateWarning.isSameFile) && (
           <div
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
@@ -396,6 +648,43 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
               Arrastra y suelta tu archivo aquí, o haz clic para buscar.
               Soporta fotos de celular (PNG, JPG, WEBP) o documentos en PDF.
             </p>
+          </div>
+        )}
+
+        {/* STEP 1.5: DUPLICATE FILE WARNING */}
+        {!scanning && !scannedData && duplicateWarning && duplicateWarning.isSameFile && (
+          <div className="bg-amber-50/50 border border-amber-200 rounded-2xl p-6 text-center animate-in fade-in duration-200">
+            <div className="p-4 bg-amber-500 text-white rounded-full w-14 h-14 flex items-center justify-center mx-auto mb-4 border-2 border-white shadow-soft">
+              <AlertCircle className="h-7 w-7" />
+            </div>
+            <h4 className="text-base font-bold text-slate-800">¡Documento ya registrado!</h4>
+            <p className="mt-2 text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
+              Este archivo exacto ya ha sido escaneado y guardado previamente en tu espacio de trabajo como un registro de:
+              <strong className="block mt-1 text-slate-800 text-sm font-extrabold">{duplicateWarning.detail}</strong>
+            </p>
+            <p className="mt-4 text-[11px] text-slate-500">
+              Para evitar duplicados innecesarios y mantener el historial médico limpio, te recomendamos descartarlo.
+            </p>
+            
+            <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={handleClose}
+                className="w-full sm:w-auto px-4 py-2.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors shadow-sm"
+              >
+                Descartar archivo (Recomendado)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDuplicateWarning(null);
+                  if (file) startScanning(file);
+                }}
+                className="w-full sm:w-auto px-4 py-2.5 text-xs font-semibold text-amber-700 bg-amber-100 hover:bg-amber-200 rounded-xl transition-colors border border-amber-200"
+              >
+                Volver a escanear de todas formas
+              </button>
+            </div>
           </div>
         )}
 
@@ -428,6 +717,21 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
                 <span className="text-[11px] text-emerald-700">Por favor, revisa y confirma que los datos extraídos son correctos. Puedes editarlos directamente si es necesario.</span>
               </div>
             </div>
+
+            {duplicateWarning && !duplicateWarning.isSameFile && (
+              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <span className="block text-xs font-bold text-amber-800">¡Posible duplicado detectado!</span>
+                  <span className="block text-[11px] text-amber-700 leading-relaxed mt-0.5">
+                    {duplicateWarning.detail}
+                  </span>
+                  <span className="block text-[10px] text-amber-500 font-medium mt-1">
+                    Verifica si necesitas crear un nuevo registro o si ya habías ingresado esta información previamente.
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="space-y-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-100 max-h-[48vh] overflow-y-auto">
               <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-200">

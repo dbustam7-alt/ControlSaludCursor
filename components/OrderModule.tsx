@@ -16,6 +16,7 @@ export interface MedicalOrder {
   hasAuthorization: boolean;
   expirationDate: string | null;
   attachmentUrl: string | null;
+  fileHash?: string | null;
   status: 'pending' | 'completed' | 'expired';
   notes: string | null;
 }
@@ -126,6 +127,7 @@ export const OrderModule: React.FC = () => {
           hasAuthorization: o.has_authorization,
           expirationDate: o.expiration_date,
           attachmentUrl: o.attachment_url,
+          fileHash: o.file_hash,
           status: o.status,
           notes: o.notes,
         }));

@@ -57,6 +57,7 @@ CREATE TABLE public.appointments (
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed')),
   notes TEXT,
   attachment_url TEXT, -- URL o path del documento médico escaneado asociado
+  file_hash TEXT, -- Hash SHA-256 del documento para prevenir duplicados
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -71,6 +72,7 @@ CREATE TABLE public.medical_orders (
   has_authorization BOOLEAN NOT NULL DEFAULT FALSE,
   expiration_date DATE,
   attachment_url TEXT,
+  file_hash TEXT, -- Hash SHA-256 del documento para prevenir duplicados
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'expired')),
   notes TEXT,
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -89,6 +91,7 @@ CREATE TABLE public.medications (
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'completed')),
   notes TEXT,
   attachment_url TEXT, -- URL o path de la receta médica escaneada asociada
+  file_hash TEXT, -- Hash SHA-256 del documento para prevenir duplicados
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
