@@ -276,7 +276,51 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       if (memberError) {
         console.error('Error adding creator as workspace member:', memberError);
-        // El workspace ya existe; no fallar toda la operación
+      }
+
+      // Vincular al creador como paciente "Yo" del grupo (correo + perfil)
+      let selfPatientId: string | null = null;
+      if (type === 'family') {
+        const { data: selfPatient, error: patientError } = await supabase
+          .from('patients')
+          .insert({
+            workspace_id: data.id,
+            full_name: user.displayName || user.email.split('@')[0],
+            relationship: 'self',
+            email: user.email.toLowerCase(),
+            linked_user_id: user.id,
+            created_by: user.id,
+          })
+          .select('id')
+          .single();
+
+        if (patientError) {
+          console.error('Error creating self patient in family workspace:', patientError);
+        } else {
+          selfPatientId = selfPatient.id;
+        }
+
+        // Traer al grupo familiar los registros del espacio personal del creador
+        if (selfPatientId) {
+          const personalWs = workspaces.find((w) => w.type === 'personal' && w.createdBy === user.id);
+          if (personalWs) {
+            await Promise.all([
+              supabase
+                .from('appointments')
+                .update({ workspace_id: data.id, patient_id: selfPatientId })
+                .eq('workspace_id', personalWs.id),
+              supabase
+                .from('medical_orders')
+                .update({ workspace_id: data.id, patient_id: selfPatientId })
+                .eq('workspace_id', personalWs.id),
+              supabase
+                .from('medications')
+                .update({ workspace_id: data.id, patient_id: selfPatientId })
+                .eq('workspace_id', personalWs.id),
+            ]);
+            window.dispatchEvent(new Event('health-data-changed'));
+          }
+        }
       }
 
       const newWs: Workspace = {

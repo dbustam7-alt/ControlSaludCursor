@@ -271,12 +271,19 @@ export default function Home() {
                 <PatientSwitcher />
                 {patients.length === 0 && activeWorkspace?.type === 'family' && (
                   <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
-                    Agrega a Papá y Mamá como pacientes para organizar citas y tratamientos por persona.
+                    Agrega a Papá y Mamá como pacientes. Tú ya figuras vinculado automáticamente.
                   </p>
                 )}
                 {filterPatientId && activePatient && (
                   <p className="mt-2 text-[11px] text-indigo-600 font-medium">
-                    Viendo: {activePatient.fullName} (incluye registros sin asignar). Cambia a &quot;Todos&quot; para ver el resto.
+                    Viendo: {activePatient.fullName}
+                    {activePatient.email ? ` · ${activePatient.email}` : ''}
+                    {activePatient.linkedUserId ? ' · cuenta vinculada' : ''}
+                  </p>
+                )}
+                {!filterPatientId && activeWorkspace?.type === 'family' && (
+                  <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
+                    Viendo todos los pacientes del grupo (incluye tus registros y los de la familia).
                   </p>
                 )}
               </div>

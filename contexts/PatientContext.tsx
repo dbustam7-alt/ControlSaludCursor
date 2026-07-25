@@ -181,6 +181,35 @@ export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       }
 
+      // En grupo familiar: el creador siempre debe figurar como paciente vinculado
+      if (activeWorkspace.type === 'family') {
+        const hasSelf =
+          mapped.some((p) => p.linkedUserId === user.id) ||
+          mapped.some((p) => p.relationship === 'self') ||
+          mapped.some((p) => (p.email || '').toLowerCase() === (user.email || '').toLowerCase());
+
+        if (!hasSelf && user.email) {
+          const { data: created, error: createErr } = await supabase
+            .from('patients')
+            .insert({
+              workspace_id: activeWorkspace.id,
+              full_name: user.displayName || user.email.split('@')[0],
+              relationship: 'self',
+              email: user.email.toLowerCase(),
+              linked_user_id: user.id,
+              created_by: user.id,
+            })
+            .select()
+            .single();
+
+          if (!createErr && created) {
+            mapped = [...mapped, mapPatient(created)].sort((a, b) =>
+              a.fullName.localeCompare(b.fullName)
+            );
+          }
+        }
+      }
+
       setPatients(mapped);
 
       const savedPatientId = localStorage.getItem(`active_patient_${activeWorkspace.id}`);

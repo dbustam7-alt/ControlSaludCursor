@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { usePatients, PatientRelationship } from '@/contexts/PatientContext';
+import { usePatients, Patient, PatientRelationship } from '@/contexts/PatientContext';
 import { useWorkspaces } from '@/contexts/WorkspaceContext';
-import { User, ChevronDown, Plus, Check, Users, X, Mail, BadgeCheck } from 'lucide-react';
+import { User, ChevronDown, Plus, Check, Users, X, Mail, BadgeCheck, Pencil } from 'lucide-react';
 
 const RELATIONSHIP_LABELS: Record<PatientRelationship, string> = {
   self: 'Yo / Titular',
@@ -21,11 +21,13 @@ export const PatientSwitcher: React.FC = () => {
     filterPatientId,
     setFilterPatientId,
     createPatient,
+    updatePatient,
     loading,
   } = usePatients();
 
   const [isOpen, setIsOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [relationship, setRelationship] = useState<PatientRelationship>('parent');
@@ -48,6 +50,16 @@ export const PatientSwitcher: React.FC = () => {
     setError(null);
   };
 
+  const openEdit = (p: Patient, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingPatient(p);
+    setFullName(p.fullName);
+    setEmail(p.email || '');
+    setRelationship(p.relationship);
+    setError(null);
+    setIsOpen(false);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName.trim()) return;
@@ -68,6 +80,27 @@ export const PatientSwitcher: React.FC = () => {
       setIsOpen(false);
     } else {
       setError(res.error || 'No se pudo crear el paciente.');
+    }
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPatient || !fullName.trim()) return;
+
+    setFormLoading(true);
+    setError(null);
+    const res = await updatePatient(editingPatient.id, {
+      fullName: fullName.trim(),
+      relationship,
+      email: email.trim() || null,
+    });
+    setFormLoading(false);
+
+    if (res.success) {
+      setEditingPatient(null);
+      resetForm();
+    } else {
+      setError(res.error || 'No se pudo actualizar el paciente.');
     }
   };
 
@@ -109,34 +142,48 @@ export const PatientSwitcher: React.FC = () => {
               {filterPatientId === null && <Check className="h-4 w-4 shrink-0" />}
             </button>
 
-            <div className="space-y-0.5 max-h-48 overflow-y-auto my-1">
+            <div className="space-y-0.5 max-h-52 overflow-y-auto my-1">
               {patients.map((p) => (
-                <button
+                <div
                   key={p.id}
-                  onClick={() => {
-                    setFilterPatientId(p.id);
-                    setIsOpen(false);
-                  }}
-                  className={`flex items-center justify-between w-full px-3 py-2 text-sm rounded-xl transition-colors ${
-                    filterPatientId === p.id
-                      ? 'bg-indigo-50 text-indigo-700 font-semibold'
-                      : 'text-slate-700 hover:bg-slate-50'
+                  className={`flex items-center gap-1 rounded-xl ${
+                    filterPatientId === p.id ? 'bg-indigo-50' : 'hover:bg-slate-50'
                   }`}
                 >
-                  <span className="truncate text-left min-w-0">
-                    <span className="flex items-center gap-1.5 truncate">
-                      <span className="truncate">{p.fullName}</span>
-                      {p.linkedUserId && (
-                        <BadgeCheck className="h-3.5 w-3.5 text-emerald-500 shrink-0" title="Tiene cuenta vinculada" />
-                      )}
+                  <button
+                    onClick={() => {
+                      setFilterPatientId(p.id);
+                      setIsOpen(false);
+                    }}
+                    className={`flex items-center justify-between flex-1 min-w-0 px-3 py-2 text-sm rounded-xl transition-colors ${
+                      filterPatientId === p.id
+                        ? 'text-indigo-700 font-semibold'
+                        : 'text-slate-700'
+                    }`}
+                  >
+                    <span className="truncate text-left min-w-0">
+                      <span className="flex items-center gap-1.5 truncate">
+                        <span className="truncate">{p.fullName}</span>
+                        {p.linkedUserId && (
+                          <BadgeCheck className="h-3.5 w-3.5 text-emerald-500 shrink-0" aria-label="Cuenta vinculada" />
+                        )}
+                      </span>
+                      <span className="block text-[10px] font-medium text-slate-400 truncate">
+                        {RELATIONSHIP_LABELS[p.relationship]}
+                        {p.email ? ` · ${p.email}` : ' · Sin correo'}
+                      </span>
                     </span>
-                    <span className="block text-[10px] font-medium text-slate-400 truncate">
-                      {RELATIONSHIP_LABELS[p.relationship]}
-                      {p.email ? ` · ${p.email}` : ''}
-                    </span>
-                  </span>
-                  {filterPatientId === p.id && <Check className="h-4 w-4 shrink-0" />}
-                </button>
+                    {filterPatientId === p.id && <Check className="h-4 w-4 shrink-0 ml-1" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => openEdit(p, e)}
+                    className="p-2 text-slate-400 hover:text-indigo-600 shrink-0"
+                    title="Editar paciente"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ))}
 
               {patients.length === 0 && (
@@ -149,6 +196,7 @@ export const PatientSwitcher: React.FC = () => {
             <div className="border-t border-slate-100 pt-1 mt-1">
               <button
                 onClick={() => {
+                  resetForm();
                   setIsCreateOpen(true);
                   setIsOpen(false);
                 }}
@@ -162,23 +210,39 @@ export const PatientSwitcher: React.FC = () => {
         </>
       )}
 
-      {isCreateOpen && (
+      {(isCreateOpen || editingPatient) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsCreateOpen(false)} />
+          <div
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm"
+            onClick={() => {
+              setIsCreateOpen(false);
+              setEditingPatient(null);
+            }}
+          />
           <form
-            onSubmit={handleCreate}
+            onSubmit={editingPatient ? handleUpdate : handleCreate}
             className="relative bg-white rounded-2xl max-w-md w-full p-6 shadow-soft border border-slate-100 z-10 max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-slate-900">Nuevo paciente</h3>
-              <button type="button" onClick={() => setIsCreateOpen(false)} className="text-slate-400 hover:text-slate-600">
+              <h3 className="text-lg font-bold text-slate-900">
+                {editingPatient ? 'Editar paciente' : 'Nuevo paciente'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCreateOpen(false);
+                  setEditingPatient(null);
+                }}
+                className="text-slate-400 hover:text-slate-600"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-              Crea el perfil de cuidado (ej. Papá, Mamá). Si agregas su correo, se vincula a su cuenta cuando inicie sesión,
-              como tu propio perfil.
+              {editingPatient
+                ? 'Actualiza el nombre, correo o relación. El correo permite vincular su cuenta individual.'
+                : 'Crea el perfil de cuidado (ej. Papá, Mamá). El correo vincula su cuenta cuando inicie sesión.'}
             </p>
 
             {error && (
@@ -202,22 +266,20 @@ export const PatientSwitcher: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                  Correo (opcional)
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 space-y-2">
+                <label className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 uppercase tracking-wider">
+                  <Mail className="h-3.5 w-3.5" />
+                  Correo electrónico
                 </label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                  <input
-                    type="email"
-                    placeholder="papa@correo.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-800"
-                  />
-                </div>
-                <p className="mt-1.5 text-[11px] text-slate-500 leading-relaxed">
-                  Si esa persona ya tiene cuenta en ControlSalud, se vincula automáticamente. Si aún no, se vincula cuando se registre con ese correo.
+                <input
+                  type="email"
+                  placeholder="ejemplo@correo.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-white border border-indigo-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
+                />
+                <p className="text-[11px] text-indigo-700/80 leading-relaxed">
+                  Recomendado: así cada persona tiene un perfil individual vinculado a su cuenta, como el tuyo.
                 </p>
               </div>
 
@@ -238,7 +300,7 @@ export const PatientSwitcher: React.FC = () => {
                 </select>
               </div>
 
-              {activeWorkspace.type === 'family' && email.trim() && (
+              {!editingPatient && activeWorkspace.type === 'family' && email.trim() && (
                 <label className="flex items-start gap-2.5 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer">
                   <input
                     type="checkbox"
@@ -257,7 +319,10 @@ export const PatientSwitcher: React.FC = () => {
             <div className="mt-6 flex items-center justify-end gap-3">
               <button
                 type="button"
-                onClick={() => setIsCreateOpen(false)}
+                onClick={() => {
+                  setIsCreateOpen(false);
+                  setEditingPatient(null);
+                }}
                 className="px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-xl"
               >
                 Cancelar
@@ -267,7 +332,7 @@ export const PatientSwitcher: React.FC = () => {
                 disabled={formLoading}
                 className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-60"
               >
-                {formLoading ? 'Guardando...' : 'Crear paciente'}
+                {formLoading ? 'Guardando...' : editingPatient ? 'Guardar cambios' : 'Crear paciente'}
               </button>
             </div>
           </form>
