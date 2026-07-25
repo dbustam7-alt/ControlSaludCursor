@@ -28,6 +28,40 @@ interface ExtractedData {
   };
 }
 
+function cleanAndParseJSON(rawText: string) {
+  let text = rawText.trim();
+  
+  if (text.startsWith('```')) {
+    text = text.replace(/^```(json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  }
+  
+  try {
+    return JSON.parse(text);
+  } catch (err: any) {
+    console.warn("Direct JSON.parse failed, trying to sanitize text...", err.message);
+    
+    // 1. Remove trailing commas in objects or arrays: ,} -> } or ,] -> ]
+    let cleaned = text.replace(/,(\s*[}\]])/g, '$1');
+    
+    try {
+      return JSON.parse(cleaned);
+    } catch (err2: any) {
+      console.warn("Sanitized trailing commas JSON.parse failed, trying to extract JSON with regex...", err2.message);
+      
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) {
+        try {
+          return JSON.parse(match[0].replace(/,(\s*[}\]])/g, '$1'));
+        } catch (err3) {
+          console.error("Regex match JSON parse failed", err3);
+        }
+      }
+      
+      throw new Error(`La Inteligencia Artificial devolvió un formato no válido: ${err2.message}`);
+    }
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const { fileBase64, fileName, fileType } = await request.json();
@@ -148,7 +182,12 @@ export async function POST(request: Request) {
         }
       }
 
-      Asegúrate de responder UNICAMENTE con el objeto JSON válido. No uses bloques de markdown con backticks, solo la cadena JSON.
+      Asegúrate de responder UNICAMENTE con el objeto JSON válido.
+      MUY IMPORTANTE: Para evitar errores de sintaxis JSON:
+      1. Si incluyes comillas dobles dentro de cualquier campo de texto, escápalas usando barra invertida (por ejemplo: \\"texto\\").
+      2. No uses saltos de línea reales dentro de los campos de texto de las propiedades. Si necesitas representar un salto de línea en las notas, usa la secuencia de escape literal \\n.
+      3. No agregues comas finales (trailing commas) en el último elemento de los objetos.
+      No uses bloques de markdown con backticks, solo la cadena JSON limpia.
     `;
 
     const response = await ai.models.generateContent({
@@ -168,14 +207,46 @@ export async function POST(request: Request) {
     });
 
     const text = response.text || '{}';
-    const parsedData = JSON.parse(text);
+    let parsedData: any;
+    
+    try {
+      parsedData = cleanAndParseJSON(text);
+    } catch (parseError: any) {
+      console.error('Failed to parse Gemini response as JSON. Raw text:', text);
+      return NextResponse.json({
+        error: 'El documento fue analizado pero la Inteligencia Artificial devolvió un formato de datos no válido (error de formato JSON). Por favor, intenta escanearlo de nuevo o sube una imagen más clara.',
+        details: parseError.message || parseError,
+        rawResponse: text
+      }, { status: 422 });
+    }
 
     return NextResponse.json({ success: true, isSimulated: false, data: parsedData });
   } catch (error: any) {
     console.error('Error in Gemini AI route:', error);
+    
+    let userFriendlyError = 'Error al procesar el documento con Inteligencia Artificial.';
+    let statusCode = 500;
+    const errMsg = String(error.message || error);
+    
+    if (
+      errMsg.includes('no pages') || 
+      errMsg.includes('password') || 
+      errMsg.includes('encrypted') || 
+      errMsg.includes('decrypt')
+    ) {
+      userFriendlyError = 'El documento PDF está protegido con contraseña o encriptado y no podemos leer sus páginas. Por favor, sube una versión desbloqueada, o tómale una foto/pantallazo al documento y sube esa imagen.';
+      statusCode = 400;
+    } else if (errMsg.includes('API key not valid') || errMsg.includes('API_KEY_INVALID')) {
+      userFriendlyError = 'La clave de la API de Gemini configurada no es válida o ha sido revocada. Por favor, verifica la configuración.';
+      statusCode = 401;
+    } else if (errMsg.includes('quota') || errMsg.includes('limit exceeded') || errMsg.includes('RESOURCE_EXHAUSTED')) {
+      userFriendlyError = 'Se ha excedido el límite de solicitudes gratuitas de la API de Gemini. Por favor, espera un minuto antes de volver a intentarlo.';
+      statusCode = 429;
+    }
+    
     return NextResponse.json({ 
-      error: 'Error al procesar el documento con Inteligencia Artificial.', 
-      details: error.message || error 
-    }, { status: 500 });
+      error: userFriendlyError, 
+      details: errMsg 
+    }, { status: statusCode });
   }
 }
