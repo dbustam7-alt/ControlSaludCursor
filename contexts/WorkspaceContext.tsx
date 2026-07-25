@@ -247,17 +247,37 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     try {
+      if (!user?.id || !user?.email) {
+        return { success: false, error: 'Debes iniciar sesión para crear un grupo familiar.' };
+      }
+
       const { data, error } = await supabase
         .from('workspaces')
         .insert({
           name,
           type,
-          created_by: user?.id,
+          created_by: user.id,
         })
         .select()
         .single();
 
       if (error) throw error;
+
+      // Registrar al creador como admin del nuevo espacio
+      const { error: memberError } = await supabase
+        .from('workspace_members')
+        .insert({
+          workspace_id: data.id,
+          email: user.email,
+          display_name: user.displayName || user.email.split('@')[0],
+          role: 'admin',
+          relationship: 'patient',
+        });
+
+      if (memberError) {
+        console.error('Error adding creator as workspace member:', memberError);
+        // El workspace ya existe; no fallar toda la operación
+      }
 
       const newWs: Workspace = {
         id: data.id,

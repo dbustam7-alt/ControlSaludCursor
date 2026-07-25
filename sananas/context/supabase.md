@@ -196,6 +196,11 @@ CREATE POLICY "Members can view workspaces"
     public.is_workspace_member(id)
   );
 
+CREATE POLICY "Authenticated users can create workspaces"
+  ON public.workspaces FOR INSERT
+  TO authenticated
+  WITH CHECK (created_by = auth.uid());
+
 CREATE POLICY "Creators can update workspaces"
   ON public.workspaces FOR UPDATE
   USING (created_by = auth.uid());
@@ -215,15 +220,15 @@ CREATE POLICY "Workspace admins can invite/insert members"
   ON public.workspace_members FOR INSERT
   WITH CHECK (
     EXISTS (
-      SELECT 1 FROM public.workspace_members
-      WHERE workspace_members.workspace_id = workspace_members.workspace_id
-      AND workspace_members.email = auth.email()
-      AND workspace_members.role = 'admin'
+      SELECT 1 FROM public.workspace_members wm
+      WHERE wm.workspace_id = workspace_members.workspace_id
+      AND wm.email = auth.email()
+      AND wm.role = 'admin'
     ) OR 
     EXISTS (
-      SELECT 1 FROM public.workspaces
-      WHERE workspaces.id = workspace_members.workspace_id
-      AND workspaces.created_by = auth.uid()
+      SELECT 1 FROM public.workspaces w
+      WHERE w.id = workspace_members.workspace_id
+      AND w.created_by = auth.uid()
     )
   );
 
@@ -231,10 +236,10 @@ CREATE POLICY "Workspace admins can update members"
   ON public.workspace_members FOR UPDATE
   USING (
     EXISTS (
-      SELECT 1 FROM public.workspace_members
-      WHERE workspace_members.workspace_id = workspace_members.workspace_id
-      AND workspace_members.email = auth.email()
-      AND workspace_members.role = 'admin'
+      SELECT 1 FROM public.workspace_members wm
+      WHERE wm.workspace_id = workspace_members.workspace_id
+      AND wm.email = auth.email()
+      AND wm.role = 'admin'
     )
   );
 
@@ -243,10 +248,10 @@ CREATE POLICY "Workspace admins or self can delete members"
   USING (
     email = auth.email() OR
     EXISTS (
-      SELECT 1 FROM public.workspace_members
-      WHERE workspace_members.workspace_id = workspace_members.workspace_id
-      AND workspace_members.email = auth.email()
-      AND workspace_members.role = 'admin'
+      SELECT 1 FROM public.workspace_members wm
+      WHERE wm.workspace_id = workspace_members.workspace_id
+      AND wm.email = auth.email()
+      AND wm.role = 'admin'
     )
   );
 
