@@ -97,7 +97,17 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
           const spec = appt.specialty;
 
           // Severity calculation
-          if (diffDays >= 0 && diffDays <= 1) {
+          if (diffDays < 0) {
+            computedAlerts.push({
+              id: `appt-alert-${appt.id}`,
+              category: 'appointment',
+              title: `Cita médica ATRASADA`,
+              subtitle: `Con el Dr(a). ${docName} (Era el ${apptDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })})`,
+              severity: 'critical',
+              dateStr: 'Vencida',
+              notes: appt.notes
+            });
+          } else if (diffDays >= 0 && diffDays <= 1) {
             computedAlerts.push({
               id: `appt-alert-${appt.id}`,
               category: 'appointment',
