@@ -348,7 +348,7 @@ export default function Home() {
                 }`}
               >
                 <Pill className="h-4.5 w-4.5" />
-                Tratamientos y Stock
+                Tratamientos / Medicamentos
               </button>
             </div>
 
