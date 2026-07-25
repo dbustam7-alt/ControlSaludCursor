@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspaces } from '@/contexts/WorkspaceContext';
 import { createClient } from '@/utils/supabase/client';
@@ -212,6 +212,40 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
       return { exists: false };
     }
   };
+
+  // Recheck for similar metadata records when form inputs change in preview pane
+  useEffect(() => {
+    if (!scannedData || !activeWorkspace) return;
+
+    const recheck = async () => {
+      const checkData = detectedType === 'appointment'
+        ? { apptDoctor, apptDate }
+        : detectedType === 'order'
+        ? { orderExam, orderInst }
+        : { medName, medDosage };
+
+      try {
+        const simCheck = await checkSimilarRecord(detectedType!, checkData, activeWorkspace.id);
+        if (simCheck.exists) {
+          setDuplicateWarning({
+            type: detectedType!,
+            detail: simCheck.detail!,
+            isSameFile: false
+          });
+        } else {
+          setDuplicateWarning(null);
+        }
+      } catch (err) {
+        console.error("Error al re-verificar registros similares:", err);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      recheck();
+    }, 450); // Debounce database queries on typing
+
+    return () => clearTimeout(timer);
+  }, [apptDoctor, apptDate, orderExam, orderInst, medName, medDosage, scannedData, detectedType, activeWorkspace]);
 
   if (!isOpen) return null;
 
@@ -962,8 +996,8 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
               <button
                 type="button"
                 onClick={handleSaveConfirmed}
-                disabled={saving}
-                className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors flex items-center gap-1.5 disabled:opacity-80 disabled:cursor-not-allowed"
+                disabled={saving || duplicateWarning !== null}
+                className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {saving ? (
                   <>

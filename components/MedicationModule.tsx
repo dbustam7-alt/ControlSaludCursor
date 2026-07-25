@@ -166,6 +166,18 @@ export const MedicationModule: React.FC = () => {
     if (!name.trim() || !dosage.trim() || !frequency.trim() || !startDate || !activeWorkspace) return;
 
     setFormError(null);
+
+    // Check for duplicate name + dosage
+    const isDuplicate = medications.some(m => 
+      m.name.toLowerCase().trim() === name.toLowerCase().trim() &&
+      m.dosage.toLowerCase().trim() === dosage.toLowerCase().trim()
+    );
+
+    if (isDuplicate) {
+      setFormError(`El medicamento "${name}" con la dosis "${dosage}" ya se encuentra registrado en este espacio de trabajo.`);
+      return;
+    }
+
     const endStr = endDate ? endDate : null;
 
     if (isDemoMode) {

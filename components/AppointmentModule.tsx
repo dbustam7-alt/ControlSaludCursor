@@ -164,6 +164,17 @@ export const AppointmentModule: React.FC = () => {
     const dateTimeStr = new Date(`${date}T${time}`).toISOString();
     setFormError(null);
 
+    // Check for duplicate doctor + date
+    const isDuplicate = appointments.some(appt => 
+      appt.doctorName.toLowerCase().trim() === doctorName.toLowerCase().trim() &&
+      appt.dateTime.substring(0, 10) === date
+    );
+
+    if (isDuplicate) {
+      setFormError(`Ya tienes registrada una cita con el Dr. ${doctorName} para este día.`);
+      return;
+    }
+
     if (isDemoMode) {
       const newAppt: Appointment = {
         id: `appt-demo-${Date.now()}`,

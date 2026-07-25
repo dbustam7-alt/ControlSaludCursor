@@ -166,6 +166,18 @@ export const OrderModule: React.FC = () => {
     if (!examType.trim() || !institution.trim() || !activeWorkspace) return;
 
     setFormError(null);
+
+    // Check for duplicate exam + institution
+    const isDuplicate = orders.some(o => 
+      o.examType.toLowerCase().trim() === examType.toLowerCase().trim() &&
+      o.institution.toLowerCase().trim() === institution.toLowerCase().trim()
+    );
+
+    if (isDuplicate) {
+      setFormError(`Ya tienes registrada una orden de "${examType}" para la institución "${institution}".`);
+      return;
+    }
+
     const dateStr = expirationDate ? expirationDate : null;
 
     // Check if newly created is already expired
