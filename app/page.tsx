@@ -276,7 +276,7 @@ export default function Home() {
                 )}
                 {filterPatientId && activePatient && (
                   <p className="mt-2 text-[11px] text-indigo-600 font-medium">
-                    Viendo información de: {activePatient.fullName}
+                    Viendo: {activePatient.fullName} (incluye registros sin asignar). Cambia a &quot;Todos&quot; para ver el resto.
                   </p>
                 )}
               </div>

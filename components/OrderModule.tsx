@@ -6,7 +6,7 @@ import { useWorkspaces } from '@/contexts/WorkspaceContext';
 import { createClient } from '@/utils/supabase/client';
 import { Search, Plus, Trash2, CheckCircle, Clock3, AlertCircle, X, FileText, Calendar, Building, Link as LinkIcon, HelpCircle } from 'lucide-react';
 import { ConfirmModal } from './ConfirmModal';
-import { usePatients } from '@/contexts/PatientContext';
+import { usePatients, matchesPatientFilter } from '@/contexts/PatientContext';
 
 export interface MedicalOrder {
   id: string;
@@ -393,9 +393,7 @@ export const OrderModule: React.FC = () => {
       statusFilter === 'all' || 
       order.status === statusFilter;
 
-    const matchesPatient =
-      filterPatientId === null ||
-      order.patientId === filterPatientId;
+    const matchesPatient = matchesPatientFilter(order.patientId, filterPatientId);
 
     return matchesSearch && matchesStatus && matchesPatient;
   });

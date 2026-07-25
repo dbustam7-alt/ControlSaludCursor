@@ -6,7 +6,7 @@ import { useWorkspaces } from '@/contexts/WorkspaceContext';
 import { createClient } from '@/utils/supabase/client';
 import { Search, Plus, Trash2, X, Pill, Calendar, Clock, MessageSquare, Edit2, Play, Pause, FileText, Check } from 'lucide-react';
 import { ConfirmModal } from './ConfirmModal';
-import { usePatients } from '@/contexts/PatientContext';
+import { usePatients, matchesPatientFilter } from '@/contexts/PatientContext';
 
 export interface Medication {
   id: string;
@@ -359,9 +359,7 @@ export const MedicationModule: React.FC = () => {
       statusFilter === 'all' || 
       med.status === statusFilter;
 
-    const matchesPatient =
-      filterPatientId === null ||
-      med.patientId === filterPatientId;
+    const matchesPatient = matchesPatientFilter(med.patientId, filterPatientId);
 
     return matchesSearch && matchesStatus && matchesPatient;
   });

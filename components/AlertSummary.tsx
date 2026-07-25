@@ -3,10 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspaces } from '@/contexts/WorkspaceContext';
+import { usePatients, matchesPatientFilter } from '@/contexts/PatientContext';
 import { createClient } from '@/utils/supabase/client';
 import { 
-  Calendar, FileText, Pill, AlertTriangle, Clock, 
-  CheckCircle2, Bell, Sparkles, ChevronRight 
+  Calendar, FileText, Pill, 
+  CheckCircle2, Bell, ChevronRight 
 } from 'lucide-react';
 
 interface AlertSummaryProps {
@@ -24,8 +25,9 @@ interface AlertItem {
 }
 
 export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
-  const { user, isDemoMode } = useAuth();
+  const { isDemoMode } = useAuth();
   const { activeWorkspace } = useWorkspaces();
+  const { filterPatientId } = usePatients();
   const supabase = createClient();
 
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
@@ -104,6 +106,17 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
             patientsMap[p.id] = p.full_name;
           });
         }
+
+        // Mismo filtro que citas / órdenes / medicamentos
+        appointmentsList = appointmentsList.filter((a) =>
+          matchesPatientFilter(a.patientId ?? a.patient_id, filterPatientId)
+        );
+        ordersList = ordersList.filter((o) =>
+          matchesPatientFilter(o.patientId ?? o.patient_id, filterPatientId)
+        );
+        medicationsList = medicationsList.filter((m) =>
+          matchesPatientFilter(m.patientId ?? m.patient_id, filterPatientId)
+        );
 
         const patientLabel = (patientId?: string | null) => {
           if (!patientId) return '';
@@ -296,7 +309,7 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
       window.removeEventListener('focus', handleRefresh);
       window.removeEventListener('health-data-changed', handleRefresh);
     };
-  }, [activeWorkspace, isDemoMode]);
+  }, [activeWorkspace, isDemoMode, filterPatientId]);
 
   const handleAlertClick = (category: AlertItem['category']) => {
     if (category === 'appointment') setActiveTab('appointments');

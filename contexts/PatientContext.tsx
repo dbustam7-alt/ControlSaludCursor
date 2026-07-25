@@ -108,11 +108,10 @@ export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const filtered = list.filter((p) => p.workspaceId === activeWorkspace.id);
         setPatients(filtered);
 
+        // Por defecto "Todos": no auto-seleccionar paciente (evita ocultar datos legacy)
         const savedPatientId = localStorage.getItem(`active_patient_${activeWorkspace.id}`);
         if (savedPatientId && filtered.some((p) => p.id === savedPatientId)) {
           setFilterPatientIdState(savedPatientId);
-        } else if (activeWorkspace.type === 'personal' && filtered.length === 1) {
-          setFilterPatientIdState(filtered[0].id);
         } else {
           setFilterPatientIdState(null);
         }
@@ -165,12 +164,10 @@ export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       setPatients(mapped);
 
+      // Por defecto "Todos": no auto-seleccionar paciente (evita ocultar datos legacy)
       const savedPatientId = localStorage.getItem(`active_patient_${activeWorkspace.id}`);
       if (savedPatientId && mapped.some((p) => p.id === savedPatientId)) {
         setFilterPatientIdState(savedPatientId);
-      } else if (activeWorkspace.type === 'personal' && mapped.length === 1) {
-        setFilterPatientIdState(mapped[0].id);
-        localStorage.setItem(`active_patient_${activeWorkspace.id}`, mapped[0].id);
       } else {
         setFilterPatientIdState(null);
       }
@@ -345,4 +342,18 @@ export function usePatients() {
     throw new Error('usePatients must be used within a PatientProvider');
   }
   return ctx;
+}
+
+/**
+ * Filtro de paciente compatible con datos legacy:
+ * - "Todos" (null): muestra todo
+ * - Paciente concreto: su info + registros sin asignar (patient_id null)
+ *   para que citas/órdenes/meds previos a perfiles no "desaparezcan"
+ */
+export function matchesPatientFilter(
+  recordPatientId: string | null | undefined,
+  filterPatientId: string | null
+): boolean {
+  if (filterPatientId === null) return true;
+  return recordPatientId === filterPatientId || recordPatientId == null;
 }

@@ -6,7 +6,7 @@ import { useWorkspaces } from '@/contexts/WorkspaceContext';
 import { createClient } from '@/utils/supabase/client';
 import { Calendar, Clock, MapPin, Search, Plus, Trash2, CheckCircle, Clock3, AlertCircle, X, MessageSquare, FileText } from 'lucide-react';
 import { ConfirmModal } from './ConfirmModal';
-import { usePatients } from '@/contexts/PatientContext';
+import { usePatients, matchesPatientFilter } from '@/contexts/PatientContext';
 
 export interface Appointment {
   id: string;
@@ -340,9 +340,7 @@ export const AppointmentModule: React.FC = () => {
       statusFilter === 'all' || 
       appt.status === statusFilter;
 
-    const matchesPatient =
-      filterPatientId === null ||
-      appt.patientId === filterPatientId;
+    const matchesPatient = matchesPatientFilter(appt.patientId, filterPatientId);
 
     return matchesSearch && matchesStatus && matchesPatient;
   });
