@@ -47,15 +47,21 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
         if (isDemoMode) {
           const apptsSaved = localStorage.getItem('demo_appointments');
           appointmentsList = apptsSaved ? JSON.parse(apptsSaved) : [];
-          appointmentsList = appointmentsList.filter(a => a.workspaceId === activeWorkspace.id);
+          appointmentsList = appointmentsList.filter(
+            a => a.workspaceId === activeWorkspace.id && a.status === 'pending'
+          );
 
           const ordersSaved = localStorage.getItem('demo_orders');
           ordersList = ordersSaved ? JSON.parse(ordersSaved) : [];
-          ordersList = ordersList.filter(o => o.workspaceId === activeWorkspace.id);
+          ordersList = ordersList.filter(
+            o => o.workspaceId === activeWorkspace.id && o.status === 'pending'
+          );
 
           const medsSaved = localStorage.getItem('demo_medications');
           medicationsList = medsSaved ? JSON.parse(medsSaved) : [];
-          medicationsList = medicationsList.filter(m => m.workspaceId === activeWorkspace.id);
+          medicationsList = medicationsList.filter(
+            m => m.workspaceId === activeWorkspace.id && m.status === 'active'
+          );
         } else {
           // Appointments
           const { data: apptsData } = await supabase
@@ -84,48 +90,75 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
 
         const today = new Date();
         const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const dayMs = 1000 * 60 * 60 * 24;
+
+        // Diff en días calendario (evita el bug de Math.ceil con fechas pasadas)
+        const calendarDaysFromToday = (date: Date) => {
+          const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+          return Math.round((startOfDate.getTime() - startOfToday.getTime()) / dayMs);
+        };
 
         // 2. PROCESS APPOINTMENTS (Citas Médicas)
         appointmentsList.forEach((appt: any) => {
           const apptDateStr = appt.dateTime || appt.date_time;
           if (!apptDateStr) return;
-          
-          const apptDate = new Date(apptDateStr);
-          const diffTime = apptDate.getTime() - today.getTime();
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          const docName = appt.doctorName || appt.doctor_name;
-          const spec = appt.specialty;
 
-          // Severity calculation
+          const apptDate = new Date(apptDateStr);
+          if (isNaN(apptDate.getTime())) return;
+
+          const diffDays = calendarDaysFromToday(apptDate);
+          const docName = appt.doctorName || appt.doctor_name || 'Médico';
+          const spec = appt.specialty || 'Consulta';
+          const timeLabel = apptDate.toLocaleTimeString('es-ES', {
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+          const dateLabel = apptDate.toLocaleDateString('es-ES', {
+            day: 'numeric',
+            month: 'short',
+          });
+
+          // Cita pendiente cuya fecha ya pasó → crítica
           if (diffDays < 0) {
+            const daysLate = Math.abs(diffDays);
             computedAlerts.push({
               id: `appt-alert-${appt.id}`,
               category: 'appointment',
-              title: `Cita médica ATRASADA`,
-              subtitle: `Con el Dr(a). ${docName} (Era el ${apptDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })})`,
+              title: 'Cita médica ATRASADA',
+              subtitle: `Con el Dr(a). ${docName} · ${daysLate === 1 ? 'hace 1 día' : `hace ${daysLate} días`}`,
               severity: 'critical',
-              dateStr: 'Vencida',
-              notes: appt.notes
+              dateStr: dateLabel,
+              notes: appt.notes,
             });
-          } else if (diffDays >= 0 && diffDays <= 1) {
+          } else if (diffDays === 0) {
             computedAlerts.push({
               id: `appt-alert-${appt.id}`,
               category: 'appointment',
-              title: `Cita médica MAÑANA`,
+              title: 'Cita médica HOY',
               subtitle: `Con el Dr(a). ${docName} (${spec})`,
               severity: 'critical',
-              dateStr: apptDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) + ' hrs',
-              notes: appt.notes
+              dateStr: `${timeLabel} hrs`,
+              notes: appt.notes,
             });
-          } else if (diffDays > 1 && diffDays <= 3) {
+          } else if (diffDays === 1) {
             computedAlerts.push({
               id: `appt-alert-${appt.id}`,
               category: 'appointment',
-              title: `Cita médica próxima`,
+              title: 'Cita médica MAÑANA',
+              subtitle: `Con el Dr(a). ${docName} (${spec})`,
+              severity: 'critical',
+              dateStr: `${timeLabel} hrs`,
+              notes: appt.notes,
+            });
+          } else if (diffDays <= 7) {
+            computedAlerts.push({
+              id: `appt-alert-${appt.id}`,
+              category: 'appointment',
+              title: 'Cita médica próxima',
               subtitle: `En ${diffDays} días con Dr(a). ${docName}`,
               severity: 'warning',
-              dateStr: apptDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }),
-              notes: appt.notes
+              dateStr: dateLabel,
+              notes: appt.notes,
             });
           }
         });
@@ -229,10 +262,20 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
 
     loadAlerts();
 
-    // Listen to tab updates or manual changes to reload alerts on dashboard
-    const handleStorageChange = () => loadAlerts();
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    // Recargar alertas cuando cambian datos locales, al volver a la pestaña, o tras guardar
+    const handleRefresh = () => loadAlerts();
+    window.addEventListener('storage', handleRefresh);
+    window.addEventListener('focus', handleRefresh);
+    window.addEventListener('health-data-changed', handleRefresh);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') handleRefresh();
+    });
+
+    return () => {
+      window.removeEventListener('storage', handleRefresh);
+      window.removeEventListener('focus', handleRefresh);
+      window.removeEventListener('health-data-changed', handleRefresh);
+    };
   }, [activeWorkspace, isDemoMode]);
 
   const handleAlertClick = (category: AlertItem['category']) => {
