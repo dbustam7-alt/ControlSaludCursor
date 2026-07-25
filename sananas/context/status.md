@@ -24,7 +24,7 @@ Building a full-stack Family Medical Management web application with Next.js, Su
 - Implemented `WorkspaceContext` for personal vs family shared workspaces and email invitations.
 - Developed `AppointmentModule.tsx` for doctor appointments, specialties, locations, dates/times, status toggles, and filters.
 - Developed `OrderModule.tsx` for lab orders, imaging, authorizations, expiration dates, and clinical attachments.
-- Developed `MedicationModule.tsx` for dosage tracking, frequencies, treatment schedules, and ending stock alerts.
+- Developed `MedicationModule.tsx` for dosage tracking, frequencies, and treatment schedules.
 - Built `ConfirmModal.tsx` for interactive user confirmation before any destructive action.
 - Built `AiDocumentScanner.tsx` leveraging `@google/genai` with human-in-the-loop preview pane to edit/verify extracted medical data before Supabase commit.
 - Created and configured a new Supabase Project `ControlSalud` and executed the PostgreSQL DDL schema with RLS policies, custom helper functions, and automated triggers.

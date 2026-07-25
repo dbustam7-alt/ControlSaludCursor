@@ -86,8 +86,6 @@ CREATE TABLE public.medications (
   frequency TEXT NOT NULL,
   start_date DATE NOT NULL,
   end_date DATE,
-  stock_quantity INTEGER,
-  low_stock_alert INTEGER,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'completed')),
   notes TEXT,
   attachment_url TEXT, -- URL o path de la receta médica escaneada asociada
