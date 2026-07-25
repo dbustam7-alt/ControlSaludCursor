@@ -8,6 +8,7 @@ import { AppointmentModule } from '@/components/AppointmentModule';
 import { OrderModule } from '@/components/OrderModule';
 import { MedicationModule } from '@/components/MedicationModule';
 import { AiDocumentScanner } from '@/components/AiDocumentScanner';
+import { AlertSummary } from '@/components/AlertSummary';
 import { 
   HeartPulse, Sparkles, Calendar, FileText, Pill, LogOut, ShieldAlert,
   Clock, AlertCircle, CheckCircle2, User, HelpCircle, Mail, AlertTriangle, Play, Users
@@ -262,37 +263,7 @@ export default function Home() {
             </div>
 
             {/* ADHERENCE ALERT SUMMARY */}
-            <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-soft space-y-4">
-              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Resumen de Alertas
-              </h2>
-              
-              <div className="space-y-2.5">
-                <div className="flex items-center gap-3 p-3 bg-amber-50/50 rounded-xl border border-amber-150">
-                  <Calendar className="h-5 w-5 text-amber-700 shrink-0" />
-                  <div className="text-xs">
-                    <span className="block font-bold text-amber-800">Próximas Citas</span>
-                    <span className="block text-amber-600 mt-0.5 font-medium">Controles médicos al día.</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 p-3 bg-rose-50/50 rounded-xl border border-rose-150">
-                  <FileText className="h-5 w-5 text-rose-700 shrink-0" />
-                  <div className="text-xs">
-                    <span className="block font-bold text-rose-800">Órdenes Médicas</span>
-                    <span className="block text-rose-600 mt-0.5 font-medium">1 examen vence esta semana.</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 p-3 bg-indigo-50/50 rounded-xl border border-indigo-150">
-                  <Pill className="h-5 w-5 text-indigo-700 shrink-0" />
-                  <div className="text-xs">
-                    <span className="block font-bold text-indigo-800">Medicamentos</span>
-                    <span className="block text-indigo-600 mt-0.5 font-medium">Atorvastatina requiere reposición.</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <AlertSummary setActiveTab={setActiveTab} />
 
             {/* DEMO MODE EXPLAINER */}
             {isDemoMode && (
