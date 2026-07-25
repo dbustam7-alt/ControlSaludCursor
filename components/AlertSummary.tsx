@@ -42,6 +42,7 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
         let appointmentsList: any[] = [];
         let ordersList: any[] = [];
         let medicationsList: any[] = [];
+        let patientsMap: Record<string, string> = {};
 
         // 1. FETCH DATA (Demo Mode vs Database Mode)
         if (isDemoMode) {
@@ -62,6 +63,14 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
           medicationsList = medicationsList.filter(
             m => m.workspaceId === activeWorkspace.id && m.status === 'active'
           );
+
+          const patientsSaved = localStorage.getItem('demo_patients');
+          const patientsList: any[] = patientsSaved ? JSON.parse(patientsSaved) : [];
+          patientsList
+            .filter((p) => p.workspaceId === activeWorkspace.id)
+            .forEach((p) => {
+              patientsMap[p.id] = p.fullName;
+            });
         } else {
           // Appointments
           const { data: apptsData } = await supabase
@@ -86,7 +95,21 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
             .eq('workspace_id', activeWorkspace.id)
             .eq('status', 'active');
           medicationsList = medsData || [];
+
+          const { data: patientsData } = await supabase
+            .from('patients')
+            .select('id, full_name')
+            .eq('workspace_id', activeWorkspace.id);
+          (patientsData || []).forEach((p: any) => {
+            patientsMap[p.id] = p.full_name;
+          });
         }
+
+        const patientLabel = (patientId?: string | null) => {
+          if (!patientId) return '';
+          const name = patientsMap[patientId];
+          return name ? ` · ${name}` : '';
+        };
 
         const today = new Date();
         const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -109,6 +132,7 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
           const diffDays = calendarDaysFromToday(apptDate);
           const docName = appt.doctorName || appt.doctor_name || 'Médico';
           const spec = appt.specialty || 'Consulta';
+          const patientId = appt.patientId || appt.patient_id;
           const timeLabel = apptDate.toLocaleTimeString('es-ES', {
             hour: '2-digit',
             minute: '2-digit',
@@ -125,7 +149,7 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
               id: `appt-alert-${appt.id}`,
               category: 'appointment',
               title: 'Cita médica ATRASADA',
-              subtitle: `Con el Dr(a). ${docName} · ${daysLate === 1 ? 'hace 1 día' : `hace ${daysLate} días`}`,
+              subtitle: `Con el Dr(a). ${docName}${patientLabel(patientId)} · ${daysLate === 1 ? 'hace 1 día' : `hace ${daysLate} días`}`,
               severity: 'critical',
               dateStr: dateLabel,
               notes: appt.notes,
@@ -135,7 +159,7 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
               id: `appt-alert-${appt.id}`,
               category: 'appointment',
               title: 'Cita médica HOY',
-              subtitle: `Con el Dr(a). ${docName} (${spec})`,
+              subtitle: `Con el Dr(a). ${docName}${patientLabel(patientId)} (${spec})`,
               severity: 'critical',
               dateStr: `${timeLabel} hrs`,
               notes: appt.notes,
@@ -145,7 +169,7 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
               id: `appt-alert-${appt.id}`,
               category: 'appointment',
               title: 'Cita médica MAÑANA',
-              subtitle: `Con el Dr(a). ${docName} (${spec})`,
+              subtitle: `Con el Dr(a). ${docName}${patientLabel(patientId)} (${spec})`,
               severity: 'critical',
               dateStr: `${timeLabel} hrs`,
               notes: appt.notes,
@@ -155,7 +179,7 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
               id: `appt-alert-${appt.id}`,
               category: 'appointment',
               title: 'Cita médica próxima',
-              subtitle: `En ${diffDays} días con Dr(a). ${docName}`,
+              subtitle: `En ${diffDays} días con Dr(a). ${docName}${patientLabel(patientId)}`,
               severity: 'warning',
               dateStr: dateLabel,
               notes: appt.notes,
@@ -172,13 +196,14 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
           const diffTime = expDate.getTime() - startOfToday.getTime();
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
           const exam = order.examType || order.exam_type;
+          const patientId = order.patientId || order.patient_id;
 
           if (diffDays < 0) {
             computedAlerts.push({
               id: `order-alert-${order.id}`,
               category: 'order',
               title: `Orden médica VENCIDA`,
-              subtitle: `"${exam}" expiró hace ${Math.abs(diffDays)} días`,
+              subtitle: `"${exam}"${patientLabel(patientId)} expiró hace ${Math.abs(diffDays)} días`,
               severity: 'critical',
               dateStr: expDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }),
               notes: order.notes
@@ -188,7 +213,7 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
               id: `order-alert-${order.id}`,
               category: 'order',
               title: `Orden médica por vencer`,
-              subtitle: `"${exam}" vence en ${diffDays} días`,
+              subtitle: `"${exam}"${patientLabel(patientId)} vence en ${diffDays} días`,
               severity: 'critical',
               dateStr: expDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }),
               notes: order.notes
@@ -198,7 +223,7 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
               id: `order-alert-${order.id}`,
               category: 'order',
               title: `Orden médica por realizar`,
-              subtitle: `"${exam}" (Vence en ${diffDays} días)`,
+              subtitle: `"${exam}"${patientLabel(patientId)} (Vence en ${diffDays} días)`,
               severity: 'warning',
               dateStr: expDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }),
               notes: order.notes
@@ -209,9 +234,8 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
         // 4. PROCESS MEDICATIONS (Tratamientos / Medicamentos)
         medicationsList.forEach((med: any) => {
           const medNameStr = med.name;
-          const dosageStr = med.dosage;
-          const freqStr = med.frequency;
           const endDateStr = med.endDate || med.end_date;
+          const patientId = med.patientId || med.patient_id;
 
           if (endDateStr) {
             const endDate = new Date(endDateStr + 'T12:00:00');
@@ -223,7 +247,7 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
                 id: `med-alert-${med.id}`,
                 category: 'medication',
                 title: `Tratamiento FINALIZADO`,
-                subtitle: `El ciclo de "${medNameStr}" terminó`,
+                subtitle: `El ciclo de "${medNameStr}"${patientLabel(patientId)} terminó`,
                 severity: 'info',
                 dateStr: 'Terminado',
                 notes: med.notes
@@ -233,16 +257,12 @@ export const AlertSummary: React.FC<AlertSummaryProps> = ({ setActiveTab }) => {
                 id: `med-alert-${med.id}`,
                 category: 'medication',
                 title: `Últimas dosis de tratamiento`,
-                subtitle: `"${medNameStr}" finaliza en ${diffDays} días`,
+                subtitle: `"${medNameStr}"${patientLabel(patientId)} finaliza en ${diffDays} días`,
                 severity: 'warning',
                 dateStr: `Termina el ${endDate.getDate()}/${endDate.getMonth() + 1}`,
                 notes: med.notes
               });
             }
-          } else {
-            // Tratamiento crónico/continuo sin fecha de término
-            // Solo lo listamos como info si no hay alertas críticas/warnings para no saturar,
-            // pero podemos listarlo de forma elegante.
           }
         });
 

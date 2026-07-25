@@ -8,6 +8,7 @@ import { X, Upload, Sparkles, AlertCircle, Check, HelpCircle, Edit2, Calendar, C
 import { Appointment } from './AppointmentModule';
 import { MedicalOrder } from './OrderModule';
 import { Medication } from './MedicationModule';
+import { usePatients } from '@/contexts/PatientContext';
 
 interface AiDocumentScannerProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ interface AiDocumentScannerProps {
 export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, onClose, onSaveSuccess }) => {
   const { user, isDemoMode } = useAuth();
   const { activeWorkspace } = useWorkspaces();
+  const { patients, filterPatientId, activePatient } = usePatients();
   const supabase = createClient();
 
   const [file, setFile] = useState<File | null>(null);
@@ -25,6 +27,7 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   
   // Scanned / Preview states
   const [scannedData, setScannedData] = useState<any | null>(null);
@@ -58,6 +61,12 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
   const [medStart, setMedStartDate] = useState('');
   const [medEnd, setMedEndDate] = useState('');
   const [medNotes, setMedNotes] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedPatientId(filterPatientId);
+    }
+  }, [isOpen, filterPatientId]);
 
   const calculateFileHash = async (fileObj: File): Promise<string> => {
     const arrayBuffer = await fileObj.arrayBuffer();
@@ -506,6 +515,7 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
             notes: apptNotes || null,
             attachmentUrl: storagePath,
             fileHash: calculatedHash,
+            patientId: selectedPatientId,
           };
           
           localStorage.setItem('demo_appointments', JSON.stringify([newAppt, ...list]));
@@ -520,6 +530,7 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
             notes: apptNotes || null,
             attachment_url: storagePath,
             file_hash: calculatedHash,
+            patient_id: selectedPatientId,
             created_by: user?.id,
           });
           if (dbErr) throw dbErr;
@@ -541,6 +552,7 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
             expirationDate: orderExpDate || null,
             attachmentUrl: storagePath,
             fileHash: calculatedHash,
+            patientId: selectedPatientId,
             status: 'pending',
             notes: orderNotes || null,
           };
@@ -556,6 +568,7 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
             expiration_date: orderExpDate || null,
             attachment_url: storagePath,
             file_hash: calculatedHash,
+            patient_id: selectedPatientId,
             status: 'pending',
             notes: orderNotes || null,
             created_by: user?.id,
@@ -581,6 +594,7 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
             notes: medNotes || null,
             attachmentUrl: storagePath,
             fileHash: calculatedHash,
+            patientId: selectedPatientId,
           };
           
           localStorage.setItem('demo_medications', JSON.stringify([newMed, ...list]));
@@ -596,6 +610,7 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
             notes: medNotes || null,
             attachment_url: storagePath,
             file_hash: calculatedHash,
+            patient_id: selectedPatientId,
             created_by: user?.id,
           });
           if (dbErr) throw dbErr;
@@ -619,6 +634,7 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
     setDetectedType(null);
     setCalculatedHash(null);
     setDuplicateWarning(null);
+    setSelectedPatientId(null);
     setError(null);
     onClose();
   };
@@ -777,6 +793,31 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
                   {detectedType === 'appointment' ? 'Cita Médica' : detectedType === 'order' ? 'Orden Médica' : 'Medicamento'}
                 </span>
               </div>
+
+              {patients.length > 0 && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    ¿Para qué paciente es este documento?
+                  </label>
+                  <select
+                    value={selectedPatientId || ''}
+                    onChange={(e) => setSelectedPatientId(e.target.value || null)}
+                    className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
+                  >
+                    <option value="">Sin asignar (se puede asociar después)</option>
+                    {patients.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.fullName}
+                      </option>
+                    ))}
+                  </select>
+                  {activePatient && selectedPatientId === activePatient.id && (
+                    <p className="mt-1 text-[10px] text-indigo-600 font-medium">
+                      Preseleccionado según el filtro activo del panel.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* APPOINTMENT FORM */}
               {detectedType === 'appointment' && (

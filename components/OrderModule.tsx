@@ -6,6 +6,7 @@ import { useWorkspaces } from '@/contexts/WorkspaceContext';
 import { createClient } from '@/utils/supabase/client';
 import { Search, Plus, Trash2, CheckCircle, Clock3, AlertCircle, X, FileText, Calendar, Building, Link as LinkIcon, HelpCircle } from 'lucide-react';
 import { ConfirmModal } from './ConfirmModal';
+import { usePatients } from '@/contexts/PatientContext';
 
 export interface MedicalOrder {
   id: string;
@@ -17,6 +18,7 @@ export interface MedicalOrder {
   expirationDate: string | null;
   attachmentUrl: string | null;
   fileHash?: string | null;
+  patientId?: string | null;
   status: 'pending' | 'completed' | 'expired';
   notes: string | null;
 }
@@ -63,6 +65,7 @@ const MOCK_ORDERS: MedicalOrder[] = [
 export const OrderModule: React.FC = () => {
   const { user, isDemoMode } = useAuth();
   const { activeWorkspace } = useWorkspaces();
+  const { filterPatientId, patients } = usePatients();
   const supabase = createClient();
 
   const [orders, setOrders] = useState<MedicalOrder[]>([]);
@@ -128,6 +131,7 @@ export const OrderModule: React.FC = () => {
           expirationDate: o.expiration_date,
           attachmentUrl: o.attachment_url,
           fileHash: o.file_hash,
+          patientId: o.patient_id,
           status: o.status,
           notes: o.notes,
         }));
@@ -167,10 +171,11 @@ export const OrderModule: React.FC = () => {
 
     setFormError(null);
 
-    // Check for duplicate exam + institution
+    // Check for duplicate exam + institution (mismo paciente)
     const isDuplicate = orders.some(o => 
       o.examType.toLowerCase().trim() === examType.toLowerCase().trim() &&
-      o.institution.toLowerCase().trim() === institution.toLowerCase().trim()
+      o.institution.toLowerCase().trim() === institution.toLowerCase().trim() &&
+      (o.patientId || null) === (filterPatientId || null)
     );
 
     if (isDuplicate) {
@@ -196,6 +201,7 @@ export const OrderModule: React.FC = () => {
         hasAuthorization: requiredAuth ? hasAuth : false,
         expirationDate: dateStr,
         attachmentUrl: attachmentUrl.trim() || null,
+        patientId: filterPatientId,
         status: initialStatus,
         notes: notes.trim() || null,
       };
@@ -218,6 +224,7 @@ export const OrderModule: React.FC = () => {
           has_authorization: requiredAuth ? hasAuth : false,
           expiration_date: dateStr,
           attachment_url: attachmentUrl.trim() || null,
+          patient_id: filterPatientId,
           status: initialStatus,
           notes: notes.trim() || null,
           created_by: user?.id,
@@ -236,6 +243,7 @@ export const OrderModule: React.FC = () => {
         hasAuthorization: data.has_authorization,
         expirationDate: data.expiration_date,
         attachmentUrl: data.attachment_url,
+        patientId: data.patient_id,
         status: data.status,
         notes: data.notes,
       };
@@ -385,8 +393,17 @@ export const OrderModule: React.FC = () => {
       statusFilter === 'all' || 
       order.status === statusFilter;
 
-    return matchesSearch && matchesStatus;
+    const matchesPatient =
+      filterPatientId === null ||
+      order.patientId === filterPatientId;
+
+    return matchesSearch && matchesStatus && matchesPatient;
   });
+
+  const getPatientName = (patientId?: string | null) => {
+    if (!patientId) return null;
+    return patients.find((p) => p.id === patientId)?.fullName || null;
+  };
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return 'No expira';
@@ -546,9 +563,14 @@ export const OrderModule: React.FC = () => {
                     )}
                   </div>
 
-                  <h3 className="text-base font-bold text-slate-900 mb-2 leading-snug">
+                  <h3 className="text-base font-bold text-slate-900 mb-1 leading-snug">
                     {order.examType}
                   </h3>
+                  {getPatientName(order.patientId) && (
+                    <p className="text-xs font-semibold text-indigo-600 mb-2">
+                      Paciente: {getPatientName(order.patientId)}
+                    </p>
+                  )}
 
                   <div className="space-y-2 text-sm text-slate-600 mb-4">
                     <div className="flex items-center gap-2">

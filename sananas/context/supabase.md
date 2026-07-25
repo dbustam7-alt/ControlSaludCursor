@@ -46,6 +46,19 @@ CREATE TABLE public.workspace_members (
   joined_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- TABLA DE PACIENTES / PERFILES DE CUIDADO (patients)
+-- Personas cuyo historial se monitorea dentro de un workspace familiar (ej. Papá, Mamá)
+CREATE TABLE public.patients (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  full_name TEXT NOT NULL,
+  relationship TEXT NOT NULL DEFAULT 'other' CHECK (relationship IN ('self', 'parent', 'sibling', 'child', 'spouse', 'other')),
+  birth_date DATE,
+  notes TEXT,
+  created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- TABLA DE CITAS MÉDICAS (appointments)
 CREATE TABLE public.appointments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -58,6 +71,7 @@ CREATE TABLE public.appointments (
   notes TEXT,
   attachment_url TEXT, -- URL o path del documento médico escaneado asociado
   file_hash TEXT, -- Hash SHA-256 del documento para prevenir duplicados
+  patient_id UUID REFERENCES public.patients(id) ON DELETE SET NULL, -- Paciente asociado (nullable)
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -73,6 +87,7 @@ CREATE TABLE public.medical_orders (
   expiration_date DATE,
   attachment_url TEXT,
   file_hash TEXT, -- Hash SHA-256 del documento para prevenir duplicados
+  patient_id UUID REFERENCES public.patients(id) ON DELETE SET NULL, -- Paciente asociado (nullable, compatible con datos previos)
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'expired')),
   notes TEXT,
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -92,6 +107,7 @@ CREATE TABLE public.medications (
   notes TEXT,
   attachment_url TEXT, -- URL o path de la receta médica escaneada asociada
   file_hash TEXT, -- Hash SHA-256 del documento para prevenir duplicados
+  patient_id UUID REFERENCES public.patients(id) ON DELETE SET NULL, -- Paciente asociado (nullable)
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );

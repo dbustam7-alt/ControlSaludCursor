@@ -6,6 +6,7 @@ import { useWorkspaces } from '@/contexts/WorkspaceContext';
 import { createClient } from '@/utils/supabase/client';
 import { Search, Plus, Trash2, X, Pill, Calendar, Clock, MessageSquare, Edit2, Play, Pause, FileText, Check } from 'lucide-react';
 import { ConfirmModal } from './ConfirmModal';
+import { usePatients } from '@/contexts/PatientContext';
 
 export interface Medication {
   id: string;
@@ -19,6 +20,7 @@ export interface Medication {
   notes: string | null;
   attachmentUrl: string | null;
   fileHash?: string | null;
+  patientId?: string | null;
 }
 
 const MOCK_MEDICATIONS: Medication[] = [
@@ -63,6 +65,7 @@ const MOCK_MEDICATIONS: Medication[] = [
 export const MedicationModule: React.FC = () => {
   const { user, isDemoMode } = useAuth();
   const { activeWorkspace } = useWorkspaces();
+  const { filterPatientId, patients } = usePatients();
   const supabase = createClient();
 
   const [medications, setMedications] = useState<Medication[]>([]);
@@ -130,6 +133,7 @@ export const MedicationModule: React.FC = () => {
           notes: m.notes,
           attachmentUrl: m.attachment_url,
           fileHash: m.file_hash,
+          patientId: m.patient_id,
         }));
 
         setMedications(mapped);
@@ -167,10 +171,11 @@ export const MedicationModule: React.FC = () => {
 
     setFormError(null);
 
-    // Check for duplicate name + dosage
+    // Check for duplicate name + dosage (mismo paciente)
     const isDuplicate = medications.some(m => 
       m.name.toLowerCase().trim() === name.toLowerCase().trim() &&
-      m.dosage.toLowerCase().trim() === dosage.toLowerCase().trim()
+      m.dosage.toLowerCase().trim() === dosage.toLowerCase().trim() &&
+      (m.patientId || null) === (filterPatientId || null)
     );
 
     if (isDuplicate) {
@@ -192,6 +197,7 @@ export const MedicationModule: React.FC = () => {
         status: 'active',
         notes: notes.trim() || null,
         attachmentUrl: attachmentUrl.trim() || null,
+        patientId: filterPatientId,
       };
 
       const updated = [newMed, ...medications];
@@ -214,6 +220,7 @@ export const MedicationModule: React.FC = () => {
           status: 'active',
           notes: notes.trim() || null,
           attachment_url: attachmentUrl.trim() || null,
+          patient_id: filterPatientId,
           created_by: user?.id,
         })
         .select()
@@ -232,6 +239,7 @@ export const MedicationModule: React.FC = () => {
         status: data.status,
         notes: data.notes,
         attachmentUrl: data.attachment_url,
+        patientId: data.patient_id,
       };
 
       setMedications([newMed, ...medications]);
@@ -351,8 +359,17 @@ export const MedicationModule: React.FC = () => {
       statusFilter === 'all' || 
       med.status === statusFilter;
 
-    return matchesSearch && matchesStatus;
+    const matchesPatient =
+      filterPatientId === null ||
+      med.patientId === filterPatientId;
+
+    return matchesSearch && matchesStatus && matchesPatient;
   });
+
+  const getPatientName = (patientId?: string | null) => {
+    if (!patientId) return null;
+    return patients.find((p) => p.id === patientId)?.fullName || null;
+  };
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '';
@@ -490,6 +507,11 @@ export const MedicationModule: React.FC = () => {
                   <h3 className="text-base font-bold text-slate-900 mb-1 truncate">
                     {med.name}
                   </h3>
+                  {getPatientName(med.patientId) && (
+                    <p className="text-xs font-semibold text-indigo-600 mb-1">
+                      Paciente: {getPatientName(med.patientId)}
+                    </p>
+                  )}
                   <p className="text-sm font-semibold text-indigo-600 flex items-center gap-1.5 mb-4">
                     <Clock className="h-4 w-4 shrink-0" />
                     {med.frequency}

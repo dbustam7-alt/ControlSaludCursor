@@ -3,6 +3,7 @@ import { Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { WorkspaceProvider } from '@/contexts/WorkspaceContext';
+import { PatientProvider } from '@/contexts/PatientContext';
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -26,7 +27,9 @@ export default function RootLayout({
       <body className="font-sans antialiased text-slate-900 bg-slate-50 min-h-screen">
         <AuthProvider>
           <WorkspaceProvider>
-            {children}
+            <PatientProvider>
+              {children}
+            </PatientProvider>
           </WorkspaceProvider>
         </AuthProvider>
       </body>

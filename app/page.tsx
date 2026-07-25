@@ -9,6 +9,8 @@ import { OrderModule } from '@/components/OrderModule';
 import { MedicationModule } from '@/components/MedicationModule';
 import { AiDocumentScanner } from '@/components/AiDocumentScanner';
 import { AlertSummary } from '@/components/AlertSummary';
+import { PatientSwitcher } from '@/components/PatientSwitcher';
+import { usePatients } from '@/contexts/PatientContext';
 import { 
   HeartPulse, Sparkles, Calendar, FileText, Pill, LogOut, ShieldAlert,
   Clock, AlertCircle, CheckCircle2, User, HelpCircle, Mail, AlertTriangle, Play, Users
@@ -17,6 +19,7 @@ import {
 export default function Home() {
   const { user, loading, isDemoMode, signInWithEmail, signInWithGoogle, signOut, enableDemoMode } = useAuth();
   const { activeWorkspace, loading: workspacesLoading } = useWorkspaces();
+  const { patients, filterPatientId, activePatient } = usePatients();
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'appointments' | 'orders' | 'medications'>('appointments');
@@ -243,22 +246,39 @@ export default function Home() {
           
           {/* LEFT COLUMN: ACTIVE WORKSPACE INFO & ALERT SUMMARY */}
           <section className="space-y-4 lg:col-span-1">
-            <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-soft">
-              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-soft space-y-4">
+              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                 Grupo Familiar Activo
               </h2>
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 bg-indigo-50 border border-indigo-100 text-indigo-700 font-bold rounded-xl flex items-center justify-center">
                   <Users className="h-5 w-5" />
                 </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 text-sm">
+                <div className="min-w-0">
+                  <h3 className="font-bold text-slate-900 text-sm truncate">
                     {activeWorkspace ? activeWorkspace.name : 'Espacio'}
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
                     {activeWorkspace?.type === 'personal' ? 'Uso Personal' : 'Espacio Colaborativo'}
                   </p>
                 </div>
+              </div>
+
+              <div>
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                  Paciente en seguimiento
+                </h3>
+                <PatientSwitcher />
+                {patients.length === 0 && activeWorkspace?.type === 'family' && (
+                  <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
+                    Agrega a Papá y Mamá como pacientes para organizar citas y tratamientos por persona.
+                  </p>
+                )}
+                {filterPatientId && activePatient && (
+                  <p className="mt-2 text-[11px] text-indigo-600 font-medium">
+                    Viendo información de: {activePatient.fullName}
+                  </p>
+                )}
               </div>
             </div>
 

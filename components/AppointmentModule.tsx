@@ -6,6 +6,7 @@ import { useWorkspaces } from '@/contexts/WorkspaceContext';
 import { createClient } from '@/utils/supabase/client';
 import { Calendar, Clock, MapPin, Search, Plus, Trash2, CheckCircle, Clock3, AlertCircle, X, MessageSquare, FileText } from 'lucide-react';
 import { ConfirmModal } from './ConfirmModal';
+import { usePatients } from '@/contexts/PatientContext';
 
 export interface Appointment {
   id: string;
@@ -18,6 +19,7 @@ export interface Appointment {
   notes: string | null;
   attachmentUrl: string | null;
   fileHash?: string | null;
+  patientId?: string | null;
 }
 
 const DEFAULT_MOCK_APPOINTMENTS: Appointment[] = [
@@ -59,6 +61,7 @@ const DEFAULT_MOCK_APPOINTMENTS: Appointment[] = [
 export const AppointmentModule: React.FC = () => {
   const { user, isDemoMode } = useAuth();
   const { activeWorkspace } = useWorkspaces();
+  const { filterPatientId, patients } = usePatients();
   const supabase = createClient();
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -125,6 +128,7 @@ export const AppointmentModule: React.FC = () => {
           notes: appt.notes,
           attachmentUrl: appt.attachment_url,
           fileHash: appt.file_hash,
+          patientId: appt.patient_id,
         }));
 
         setAppointments(mapped);
@@ -164,10 +168,11 @@ export const AppointmentModule: React.FC = () => {
     const dateTimeStr = new Date(`${date}T${time}`).toISOString();
     setFormError(null);
 
-    // Check for duplicate doctor + date
+    // Check for duplicate doctor + date (mismo paciente)
     const isDuplicate = appointments.some(appt => 
       appt.doctorName.toLowerCase().trim() === doctorName.toLowerCase().trim() &&
-      appt.dateTime.substring(0, 10) === date
+      appt.dateTime.substring(0, 10) === date &&
+      (appt.patientId || null) === (filterPatientId || null)
     );
 
     if (isDuplicate) {
@@ -186,6 +191,7 @@ export const AppointmentModule: React.FC = () => {
         status: 'pending',
         notes: notes.trim() || null,
         attachmentUrl: attachmentUrl.trim() || null,
+        patientId: filterPatientId,
       };
       
       const updated = [newAppt, ...appointments].sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
@@ -207,6 +213,7 @@ export const AppointmentModule: React.FC = () => {
           status: 'pending',
           notes: notes.trim() || null,
           attachment_url: attachmentUrl.trim() || null,
+          patient_id: filterPatientId,
           created_by: user?.id,
         })
         .select()
@@ -224,6 +231,7 @@ export const AppointmentModule: React.FC = () => {
         status: data.status,
         notes: data.notes,
         attachmentUrl: data.attachment_url,
+        patientId: data.patient_id,
       };
 
       const updated = [newAppt, ...appointments].sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
@@ -332,8 +340,17 @@ export const AppointmentModule: React.FC = () => {
       statusFilter === 'all' || 
       appt.status === statusFilter;
 
-    return matchesSearch && matchesStatus;
+    const matchesPatient =
+      filterPatientId === null ||
+      appt.patientId === filterPatientId;
+
+    return matchesSearch && matchesStatus && matchesPatient;
   });
+
+  const getPatientName = (patientId?: string | null) => {
+    if (!patientId) return null;
+    return patients.find((p) => p.id === patientId)?.fullName || null;
+  };
 
   const formatDate = (isoStr: string) => {
     const options: Intl.DateTimeFormatOptions = { weekday: 'long', day: 'numeric', month: 'long' };
@@ -463,9 +480,14 @@ export const AppointmentModule: React.FC = () => {
                     )}
                   </div>
 
-                  <h3 className="text-base font-bold text-slate-900 mb-2 truncate">
+                  <h3 className="text-base font-bold text-slate-900 mb-1 truncate">
                     {appt.doctorName}
                   </h3>
+                  {getPatientName(appt.patientId) && (
+                    <p className="text-xs font-semibold text-indigo-600 mb-2">
+                      Paciente: {getPatientName(appt.patientId)}
+                    </p>
+                  )}
 
                   <div className="space-y-2.5 text-sm text-slate-600 mb-4">
                     <div className="flex items-center gap-2">
