@@ -103,29 +103,35 @@ export const AiDocumentScanner: React.FC<AiDocumentScannerProps> = ({ isOpen, on
       const reader = new FileReader();
       reader.readAsDataURL(targetFile);
       reader.onloadend = async () => {
-        const base64Str = reader.result as string;
-        
-        // Post to our API route
-        const res = await fetch('/api/scan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fileBase64: base64Str,
-            fileName: targetFile.name,
-            fileType: targetFile.type
-          }),
-        });
+        try {
+          const base64Str = reader.result as string;
+          
+          // Post to our API route
+          const res = await fetch('/api/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileBase64: base64Str,
+              fileName: targetFile.name,
+              fileType: targetFile.type
+            }),
+          });
 
-        const json = await res.json();
-        
-        if (!res.ok) {
-          throw new Error(json.error || 'Error al escanear con la Inteligencia Artificial.');
-        }
+          const json = await res.json();
+          
+          if (!res.ok) {
+            throw new Error(json.error || json.details || 'Error al escanear con la Inteligencia Artificial.');
+          }
 
-        if (json.success && json.data) {
-          populateVerificationFields(json.data);
-        } else {
-          throw new Error('No se pudo extraer información estructurada del documento.');
+          if (json.success && json.data) {
+            populateVerificationFields(json.data);
+          } else {
+            throw new Error('No se pudo extraer información estructurada del documento.');
+          }
+        } catch (err: any) {
+          console.error('Error inside reader.onloadend:', err);
+          setError(err.message || 'Error al procesar el archivo con Inteligencia Artificial.');
+          setScanning(false);
         }
       };
     } catch (err: any) {
